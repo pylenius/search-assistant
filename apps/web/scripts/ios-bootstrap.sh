@@ -85,6 +85,7 @@ plutil -lint "$ENT" >/dev/null
 
 # SceneDelegate.swift — handles the scene lifecycle and forwards Universal Links
 # + URL opens to Capacitor's ApplicationDelegateProxy so JS gets the events.
+# NSLog at every entry point so Universal Link issues are debuggable from Xcode.
 cat > "$SCENE_DELEGATE" <<'SWIFT_EOF'
 import UIKit
 import Capacitor
@@ -94,6 +95,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        NSLog("[SceneDelegate] willConnectTo userActivities=%d urlContexts=%d",
+              connectionOptions.userActivities.count,
+              connectionOptions.urlContexts.count)
+
         guard let windowScene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: windowScene)
         let storyboard = UIStoryboard(name: "Main", bundle: nil)
@@ -101,17 +106,30 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.window = window
         window.makeKeyAndVisible()
 
-        // Forward any Universal Link that launched the app to Capacitor.
-        if let userActivity = connectionOptions.userActivities.first {
+        for activity in connectionOptions.userActivities {
+            NSLog("[SceneDelegate] launch activity type=%@ webpageURL=%@",
+                  activity.activityType,
+                  activity.webpageURL?.absoluteString ?? "nil")
             _ = ApplicationDelegateProxy.shared.application(
                 UIApplication.shared,
-                continue: userActivity,
+                continue: activity,
                 restorationHandler: { _ in }
+            )
+        }
+        for ctx in connectionOptions.urlContexts {
+            NSLog("[SceneDelegate] launch URL %@", ctx.url.absoluteString)
+            _ = ApplicationDelegateProxy.shared.application(
+                UIApplication.shared,
+                open: ctx.url,
+                options: [:]
             )
         }
     }
 
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        NSLog("[SceneDelegate] continue userActivity type=%@ webpageURL=%@",
+              userActivity.activityType,
+              userActivity.webpageURL?.absoluteString ?? "nil")
         _ = ApplicationDelegateProxy.shared.application(
             UIApplication.shared,
             continue: userActivity,
@@ -120,10 +138,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
-        for urlContext in URLContexts {
+        NSLog("[SceneDelegate] openURLContexts count=%d", URLContexts.count)
+        for ctx in URLContexts {
+            NSLog("[SceneDelegate] open URL %@", ctx.url.absoluteString)
             _ = ApplicationDelegateProxy.shared.application(
                 UIApplication.shared,
-                open: urlContext.url,
+                open: ctx.url,
                 options: [:]
             )
         }
