@@ -10,7 +10,19 @@ namespace SearchAssistant.Api;
 
 public class Program
 {
-    public const string DevCorsPolicy = "dev";
+    public const string AppCorsPolicy = "app";
+
+    // Browser SPA on the live domain is same-origin so doesn't need CORS,
+    // but the Capacitor iOS WKWebView runs at capacitor://localhost and
+    // makes cross-origin requests against the API. Plus the Vite dev server
+    // at :5173 during local development.
+    private static readonly string[] AllowedOrigins =
+    [
+        "http://localhost:5173",
+        "capacitor://localhost",
+        "https://localhost",
+        "ionic://localhost",
+    ];
 
     public static void Main(string[] args)
     {
@@ -37,14 +49,11 @@ public class Program
         builder.Services.AddSingleton<PositionRateLimiter>();
         builder.Services.AddHostedService<SearchExpiryService>();
 
-        if (builder.Environment.IsDevelopment())
-        {
-            builder.Services.AddCors(o => o.AddPolicy(DevCorsPolicy, p =>
-                p.WithOrigins("http://localhost:5173")
-                 .AllowAnyHeader()
-                 .AllowAnyMethod()
-                 .AllowCredentials()));
-        }
+        builder.Services.AddCors(o => o.AddPolicy(AppCorsPolicy, p =>
+            p.WithOrigins(AllowedOrigins)
+             .AllowAnyHeader()
+             .AllowAnyMethod()
+             .AllowCredentials()));
 
         var app = builder.Build();
 
@@ -57,10 +66,12 @@ public class Program
             db.Database.Migrate();
         }
 
+        // CORS must run before endpoints so preflights respond before MVC pipeline.
+        app.UseCors(AppCorsPolicy);
+
         if (app.Environment.IsDevelopment())
         {
             app.MapOpenApi();
-            app.UseCors(DevCorsPolicy);
         }
 
         app.MapGet("/api/health", async (AppDbContext db) =>
