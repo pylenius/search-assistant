@@ -1,0 +1,6 @@
+<resources>
+    <!-- Base application theme; Compose drives actual colors via
+         SearchAssistantTheme. This entry just gives the manifest a
+         valid Theme reference for the splash/launch frame. -->
+    <style name="Theme.SearchAssistant" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

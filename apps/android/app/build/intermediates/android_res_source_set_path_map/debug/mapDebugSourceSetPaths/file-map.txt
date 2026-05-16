@@ -1,0 +1,7 @@
+fi.eport.searchassistant.app-pngs-0 /Users/pekka/Coding/search-assistant/apps/android/app/build/generated/res/pngs/debug
+fi.eport.searchassistant.app-updated_navigation_xml-1 /Users/pekka/Coding/search-assistant/apps/android/app/build/generated/updated_navigation_xml/debug
+fi.eport.searchassistant.app-packageDebugResources-2 /Users/pekka/Coding/search-assistant/apps/android/app/build/intermediates/incremental/debug/packageDebugResources/merged.dir
+fi.eport.searchassistant.app-packageDebugResources-3 /Users/pekka/Coding/search-assistant/apps/android/app/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
+fi.eport.searchassistant.app-debug-4 /Users/pekka/Coding/search-assistant/apps/android/app/build/intermediates/merged_res/debug/mergeDebugResources
+fi.eport.searchassistant.app-debug-5 /Users/pekka/Coding/search-assistant/apps/android/app/src/debug/res
+fi.eport.searchassistant.app-main-6 /Users/pekka/Coding/search-assistant/apps/android/app/src/main/res

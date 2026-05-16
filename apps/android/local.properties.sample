@@ -1,0 +1,6 @@
+# Copy to local.properties and fill in:
+#   MAPS_API_KEY  — a Google Maps SDK for Android key from
+#                   https://console.cloud.google.com/google/maps-apis
+#   sdk.dir       — usually auto-detected; set if Android SDK is in a
+#                   non-default location.
+MAPS_API_KEY=PUT_YOUR_KEY_HERE
