@@ -7,40 +7,28 @@ private let fallbackCenter = CLLocationCoordinate2D(latitude: 60.17, longitude: 
 struct SearchView: View {
     let slug: String
 
-    @State private var snapshot: SearchSnapshotDto?
+    @StateObject private var store = SearchStore()
+    @State private var hub: SignalRService?
+
     @State private var loadError: String?
-    @State private var me: Me?
+    @State private var didLoad: Bool = false
     @State private var needsJoin: Bool = false
+    @State private var joining: Bool = false
     @State private var joinError: String?
 
     var body: some View {
         Group {
-            if let snapshot {
+            if let loadError {
+                errorView(loadError)
+            } else if didLoad {
                 ZStack(alignment: .topLeading) {
-                    MapView(
-                        center: mapCenter(snapshot),
-                        zoom: snapshot.defaultZoom
-                    )
-                    .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
+                    MapView(center: mapCenter, zoom: store.defaultZoom)
+                        .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
 
-                    titleBadge(snapshot: snapshot)
+                    titleBadge
                         .padding(.horizontal, 12)
                         .padding(.top, 8)
                 }
-            } else if let loadError {
-                VStack(spacing: 12) {
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.orange)
-                    Text("Couldn't load search")
-                        .font(.headline)
-                    Text(loadError)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ProgressView("Loading search…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -52,26 +40,35 @@ struct SearchView: View {
         }
         .sheet(isPresented: $needsJoin) {
             JoinSheet(
-                searchTitle: snapshot?.title ?? "Search",
+                searchTitle: store.title.isEmpty ? "Search" : store.title,
                 onJoin: { name in await join(displayName: name) },
                 onCancel: { needsJoin = false }
             )
             .presentationDetents([.medium, .large])
         }
+        .onDisappear {
+            Task { await hub?.disconnect() }
+        }
+        .onChange(of: store.endedRemotely) { ended in
+            if ended { loadError = "The owner ended this search." }
+        }
     }
 
-    private func titleBadge(snapshot: SearchSnapshotDto) -> some View {
+    // MARK: - Subviews
+
+    private var titleBadge: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(snapshot.title.isEmpty ? "Search" : snapshot.title)
+            Text(store.title.isEmpty ? "Search" : store.title)
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
             HStack(spacing: 6) {
-                Text("\(snapshot.participants.count) \(snapshot.participants.count == 1 ? "person" : "people")")
-                if let me {
+                Text("\(store.participants.count) \(store.participants.count == 1 ? "person" : "people")")
+                if let me = store.me {
                     Text("·")
                     Circle().fill(Color(hex: me.color)).frame(width: 8, height: 8)
                     Text(me.displayName).lineLimit(1)
                 }
+                connectionDot
             }
             .font(.caption2)
             .foregroundStyle(.secondary)
@@ -81,19 +78,51 @@ struct SearchView: View {
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
-    private func mapCenter(_ snapshot: SearchSnapshotDto) -> CLLocationCoordinate2D {
-        guard let p = snapshot.center else { return fallbackCenter }
+    @ViewBuilder
+    private var connectionDot: some View {
+        switch store.connectionState {
+        case .connected:
+            Image(systemName: "antenna.radiowaves.left.and.right").foregroundStyle(.green)
+        case .connecting:
+            Image(systemName: "antenna.radiowaves.left.and.right").foregroundStyle(.orange)
+        case .failed:
+            Image(systemName: "antenna.radiowaves.left.and.right.slash").foregroundStyle(.red)
+        case .idle:
+            EmptyView()
+        }
+    }
+
+    private func errorView(_ message: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 48))
+                .foregroundStyle(.orange)
+            Text("Couldn't load search")
+                .font(.headline)
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var mapCenter: CLLocationCoordinate2D {
+        guard let p = store.center else { return fallbackCenter }
         return CLLocationCoordinate2D(latitude: p.lat, longitude: p.lng)
     }
 
-    // MARK: - Loading + joining
+    // MARK: - Loading + joining + hub
 
     private func load() async {
         loadError = nil
+        didLoad = false
         do {
             let snap = try await ApiClient.shared.getSearch(slug: slug)
-            snapshot = snap
-            await resolveIdentity(in: snap)
+            store.hydrate(snap)
+            didLoad = true
+            await resolveIdentityAndConnect()
         } catch let ApiError.status(404, _) {
             loadError = "This search doesn't exist. It may have expired."
         } catch let ApiError.status(code, _) {
@@ -103,45 +132,63 @@ struct SearchView: View {
         }
     }
 
-    private func resolveIdentity(in snapshot: SearchSnapshotDto) async {
+    private func resolveIdentityAndConnect() async {
         if let token = SessionStore.shared.sessionToken(for: slug) {
             do {
                 let dto = try await ApiClient.shared.me(slug: slug, sessionToken: token)
-                me = Me(id: dto.id,
-                        sessionToken: token,
-                        color: dto.color,
-                        displayName: dto.displayName)
+                store.me = Me(id: dto.id,
+                              sessionToken: token,
+                              color: dto.color,
+                              displayName: dto.displayName)
+                await connectHub()
                 return
             } catch ApiError.status(401, _) {
                 SessionStore.shared.clearSessionToken(for: slug)
             } catch {
-                // Network hiccup — leave the user as-is for now; they can
-                // re-open the search to retry.
-                return
+                // Soft fail — user can pull-to-retry later; for now just prompt.
             }
         }
         needsJoin = true
     }
 
     private func join(displayName: String) async {
+        joining = true
         joinError = nil
+        defer { joining = false }
+
         do {
             let resp = try await ApiClient.shared.joinSearch(slug: slug,
                                                              displayName: displayName)
             SessionStore.shared.setSessionToken(resp.sessionToken, for: slug)
-            me = Me(id: resp.participantId,
-                    sessionToken: resp.sessionToken,
-                    color: resp.color,
-                    displayName: displayName)
+            store.me = Me(id: resp.participantId,
+                          sessionToken: resp.sessionToken,
+                          color: resp.color,
+                          displayName: displayName)
+            // Optimistically add ourselves to the participant list pre-snapshot.
+            store.upsertParticipant(ParticipantDto(
+                id: resp.participantId,
+                displayName: displayName,
+                color: resp.color,
+                joinedAt: Date(),
+                lastSeenAt: Date(),
+                lastPosition: nil))
             needsJoin = false
-            // Refresh the snapshot so participant count + lists include us.
-            if let refreshed = try? await ApiClient.shared.getSearch(slug: slug) {
-                snapshot = refreshed
-            }
+            await connectHub()
         } catch let ApiError.status(code, _) {
             joinError = "Couldn't join (HTTP \(code))."
         } catch {
             joinError = error.localizedDescription
+        }
+    }
+
+    private func connectHub() async {
+        guard let token = store.me?.sessionToken else { return }
+        let service = SignalRService()
+        hub = service
+        do {
+            try await service.connect(slug: slug, sessionToken: token, store: store)
+        } catch {
+            // Connection-state set to .failed inside the service.
         }
     }
 }
