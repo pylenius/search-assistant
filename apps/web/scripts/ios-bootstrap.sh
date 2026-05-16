@@ -16,10 +16,15 @@ PLIST="ios/App/App/Info.plist"
 ENT="ios/App/App/App.entitlements"
 SCENE_DELEGATE="ios/App/App/SceneDelegate.swift"
 PBXPROJ="ios/App/App.xcodeproj/project.pbxproj"
+CAP_CFG_JSON="ios/App/App/capacitor.config.json"
+SPM_SRC_DIR="ios/App/CapApp-SPM/Sources/CapApp-SPM"
+BG_LOCATION_SRC="native/ios/BackgroundLocationPlugin.swift"
+BG_LOCATION_DST="$SPM_SRC_DIR/BackgroundLocationPlugin.swift"
 
 TEAM_ID="HEJK7U967E"
 ASSOCIATED_DOMAIN="applinks:searchassistant.eport.fi"
 WHEN_IN_USE_DESC="Search Assistant uses your location to share it with your search group."
+ALWAYS_DESC="Search Assistant keeps recording your path even when the screen is off, so the group can see where you have been."
 
 echo "==> 1/6 Installing web dependencies"
 npm install --silent
@@ -38,15 +43,12 @@ fi
 
 echo "==> 4/6 Info.plist permissions + scene manifest"
 
-# Location string (foreground only — see below).
+# Location strings + background mode. The custom BackgroundLocationPlugin
+# (installed below into CapApp-SPM) needs both descriptions and the
+# 'location' background mode to keep CLLocationManager running with screen off.
 plutil -replace NSLocationWhenInUseUsageDescription -string "$WHEN_IN_USE_DESC" "$PLIST"
-
-# V1 is foreground-only. The community background-geolocation plugin still pins
-# to capacitor-swift-pm 7.x and conflicts with @capacitor/geolocation@8 in SPM
-# resolution. Re-add the Always description + UIBackgroundModes 'location' once
-# a Capacitor 8-compatible plugin lands (or we ship our own).
-plutil -remove NSLocationAlwaysAndWhenInUseUsageDescription "$PLIST" 2>/dev/null || true
-plutil -remove UIBackgroundModes "$PLIST" 2>/dev/null || true
+plutil -replace NSLocationAlwaysAndWhenInUseUsageDescription -string "$ALWAYS_DESC" "$PLIST"
+plutil -replace UIBackgroundModes -json '["location"]' "$PLIST"
 
 # UIApplicationSceneManifest is required for iOS 26+ — Capacitor's default
 # AppDelegate-only lifecycle no longer launches on iOS 26+. See:
@@ -129,6 +131,27 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 }
 SWIFT_EOF
 
+echo "==> 5b/6 Installing BackgroundLocationPlugin into CapApp-SPM"
+mkdir -p "$SPM_SRC_DIR"
+cp "$BG_LOCATION_SRC" "$BG_LOCATION_DST"
+
+# Register the plugin so Capacitor instantiates it on startup. Stored in
+# capacitor.config.json (runtime) — Capacitor reads packageClassList here.
+python3 - <<PYEOF
+import json
+from pathlib import Path
+
+cfg_path = Path("$CAP_CFG_JSON")
+cfg = json.loads(cfg_path.read_text())
+pkgs = cfg.setdefault("packageClassList", [])
+if "BackgroundLocationPlugin" not in pkgs:
+    pkgs.append("BackgroundLocationPlugin")
+    cfg_path.write_text(json.dumps(cfg, indent=2))
+    print("    registered BackgroundLocationPlugin in capacitor.config.json")
+else:
+    print("    BackgroundLocationPlugin already registered")
+PYEOF
+
 echo "==> 6/6 pbxproj: team, entitlements, SceneDelegate (Python)"
 
 # All pbxproj edits in one Python pass. We use str.replace() instead of sed
@@ -191,7 +214,10 @@ PYEOF
 echo ""
 echo "==> Verification"
 plutil -extract NSLocationWhenInUseUsageDescription raw -o - "$PLIST"
+plutil -extract NSLocationAlwaysAndWhenInUseUsageDescription raw -o - "$PLIST"
+echo "  UIBackgroundModes: $(plutil -extract UIBackgroundModes json -o - "$PLIST")"
 echo "  Scene manifest: $(plutil -extract UIApplicationSceneManifest.UISceneConfigurations.UIWindowSceneSessionRoleApplication.0.UISceneDelegateClassName raw -o - "$PLIST")"
+echo "  BackgroundLocationPlugin.swift: $(test -f "$BG_LOCATION_DST" && echo "present" || echo "MISSING")"
 echo "  Entitlements:"
 plutil -p "$ENT" | sed 's/^/    /'
 echo "  DEVELOPMENT_TEAM lines in pbxproj: $(grep -c "DEVELOPMENT_TEAM = $TEAM_ID" "$PBXPROJ")"
