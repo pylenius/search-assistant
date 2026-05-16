@@ -20,7 +20,6 @@ PBXPROJ="ios/App/App.xcodeproj/project.pbxproj"
 TEAM_ID="HEJK7U967E"
 ASSOCIATED_DOMAIN="applinks:searchassistant.eport.fi"
 WHEN_IN_USE_DESC="Search Assistant uses your location to share it with your search group."
-ALWAYS_DESC="Search Assistant keeps recording your path even when the screen is off, so the group can see where you have been."
 
 echo "==> 1/6 Installing web dependencies"
 npm install --silent
@@ -39,10 +38,15 @@ fi
 
 echo "==> 4/6 Info.plist permissions + scene manifest"
 
-# Location strings + background mode.
+# Location string (foreground only — see below).
 plutil -replace NSLocationWhenInUseUsageDescription -string "$WHEN_IN_USE_DESC" "$PLIST"
-plutil -replace NSLocationAlwaysAndWhenInUseUsageDescription -string "$ALWAYS_DESC" "$PLIST"
-plutil -replace UIBackgroundModes -json '["location"]' "$PLIST"
+
+# V1 is foreground-only. The community background-geolocation plugin still pins
+# to capacitor-swift-pm 7.x and conflicts with @capacitor/geolocation@8 in SPM
+# resolution. Re-add the Always description + UIBackgroundModes 'location' once
+# a Capacitor 8-compatible plugin lands (or we ship our own).
+plutil -remove NSLocationAlwaysAndWhenInUseUsageDescription "$PLIST" 2>/dev/null || true
+plutil -remove UIBackgroundModes "$PLIST" 2>/dev/null || true
 
 # UIApplicationSceneManifest is required for iOS 26+ — Capacitor's default
 # AppDelegate-only lifecycle no longer launches on iOS 26+. See:
@@ -187,8 +191,6 @@ PYEOF
 echo ""
 echo "==> Verification"
 plutil -extract NSLocationWhenInUseUsageDescription raw -o - "$PLIST"
-plutil -extract NSLocationAlwaysAndWhenInUseUsageDescription raw -o - "$PLIST"
-echo "  UIBackgroundModes: $(plutil -extract UIBackgroundModes json -o - "$PLIST")"
 echo "  Scene manifest: $(plutil -extract UIApplicationSceneManifest.UISceneConfigurations.UIWindowSceneSessionRoleApplication.0.UISceneDelegateClassName raw -o - "$PLIST")"
 echo "  Entitlements:"
 plutil -p "$ENT" | sed 's/^/    /'
