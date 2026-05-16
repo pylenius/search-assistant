@@ -17,41 +17,51 @@ struct SearchView: View {
     @State private var joinError: String?
 
     var body: some View {
-        Group {
-            if let loadError {
-                errorView(loadError)
-            } else if didLoad {
-                ZStack(alignment: .topLeading) {
-                    MapView(center: mapCenter, zoom: store.defaultZoom)
-                        .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
-
-                    titleBadge
-                        .padding(.horizontal, 12)
-                        .padding(.top, 8)
-                }
-            } else {
-                ProgressView("Loading search…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        content
+            .navigationBarTitleDisplayMode(.inline)
+            .task(id: slug) { await load() }
+            .sheet(isPresented: $needsJoin) { joinSheet }
+            .onDisappear { Task { await hub?.disconnect() } }
+            .onChange(of: store.endedRemotely) { ended in
+                if ended { loadError = "The owner ended this search." }
             }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if let loadError {
+            errorView(loadError)
+        } else if didLoad {
+            mapStack
+        } else {
+            ProgressView("Loading search…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .navigationBarTitleDisplayMode(.inline)
-        .task(id: slug) {
-            await load()
-        }
-        .sheet(isPresented: $needsJoin) {
-            JoinSheet(
-                searchTitle: store.title.isEmpty ? "Search" : store.title,
-                onJoin: { name in await join(displayName: name) },
-                onCancel: { needsJoin = false }
+    }
+
+    private var mapStack: some View {
+        ZStack(alignment: .topLeading) {
+            SearchMapView(
+                center: mapCenter,
+                zoom: store.defaultZoom,
+                positions: store.positions,
+                participants: store.participants
             )
-            .presentationDetents([.medium, .large])
+            .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
+
+            titleBadge
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
         }
-        .onDisappear {
-            Task { await hub?.disconnect() }
-        }
-        .onChange(of: store.endedRemotely) { ended in
-            if ended { loadError = "The owner ended this search." }
-        }
+    }
+
+    private var joinSheet: some View {
+        JoinSheet(
+            searchTitle: store.title.isEmpty ? "Search" : store.title,
+            onJoin: { name in await join(displayName: name) },
+            onCancel: { needsJoin = false }
+        )
+        .presentationDetents([.medium, .large])
     }
 
     // MARK: - Subviews
@@ -62,6 +72,9 @@ struct SearchView: View {
                 .font(.subheadline.weight(.semibold))
                 .lineLimit(1)
             HStack(spacing: 6) {
+                Text("/s/\(slug)")
+                    .font(.caption2.monospaced())
+                Text("·")
                 Text("\(store.participants.count) \(store.participants.count == 1 ? "person" : "people")")
                 if let me = store.me {
                     Text("·")
