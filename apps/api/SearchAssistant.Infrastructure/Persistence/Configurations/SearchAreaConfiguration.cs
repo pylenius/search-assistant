@@ -13,6 +13,8 @@ public class SearchAreaConfiguration : IEntityTypeConfiguration<SearchArea>
         e.Property(x => x.Geometry).HasColumnType("geography (Polygon, 4326)").IsRequired();
         e.HasIndex(x => x.Geometry).HasMethod("GIST");
         e.HasIndex(x => x.SearchId);
+        e.Property(x => x.Title).HasMaxLength(80);
+        e.Property(x => x.Color).HasMaxLength(9);
 
         e.HasOne(x => x.Search)
             .WithMany(s => s.Areas)

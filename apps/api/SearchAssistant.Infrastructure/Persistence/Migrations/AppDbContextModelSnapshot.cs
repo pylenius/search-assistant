@@ -198,6 +198,10 @@ namespace SearchAssistant.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Color")
+                        .HasMaxLength(9)
+                        .HasColumnType("character varying(9)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -210,6 +214,10 @@ namespace SearchAssistant.Infrastructure.Persistence.Migrations
 
                     b.Property<Guid>("SearchId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)");
 
                     b.HasKey("Id");
 

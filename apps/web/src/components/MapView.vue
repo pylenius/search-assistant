@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
 import maplibregl, { type Map as MlMap, type Marker } from 'maplibre-gl'
-import { TerraDraw, TerraDrawPolygonMode } from 'terra-draw'
+import { TerraDraw, TerraDrawPolygonMode, TerraDrawSelectMode } from 'terra-draw'
 import { TerraDrawMapLibreGLAdapter } from 'terra-draw-maplibre-gl-adapter'
 import type { Polygon } from 'geojson'
 import { osmRasterStyle } from '../lib/mapStyle'
@@ -86,7 +86,8 @@ function buildAreaFeatureCollection() {
       geometry: a.geometry,
       properties: {
         id: a.id,
-        color: store.participants.get(a.createdByParticipantId)?.color ?? '#888',
+        // Per-area color overrides participant color when set.
+        color: a.color ?? store.participants.get(a.createdByParticipantId)?.color ?? '#888',
       },
     })),
   }
@@ -156,24 +157,28 @@ function syncPathLayer() {
 
 function ensureDraw() {
   if (draw || !map) return
+  // Need a passive mode to switch to when the user toggles draw off, otherwise
+  // terra-draw stays in polygon mode and the next map click starts another polygon.
   draw = new TerraDraw({
     adapter: new TerraDrawMapLibreGLAdapter({ map }),
-    modes: [new TerraDrawPolygonMode()],
+    modes: [new TerraDrawPolygonMode(), new TerraDrawSelectMode({ flags: {} })],
   })
   draw.start()
+  draw.setMode('select')
   draw.on('finish', (id) => {
     const f = draw?.getSnapshotFeature(id)
     if (f?.geometry.type === 'Polygon') {
       emit('polygonFinished', f.geometry as Polygon)
     }
     draw?.clear()
+    draw?.setMode('select')
   })
 }
 
 function applyDrawingMode(isDrawing: boolean) {
   if (!draw) return
-  if (isDrawing) draw.setMode('polygon')
-  else draw.clear()
+  draw.clear()  // wipe any in-progress polygon when toggling
+  draw.setMode(isDrawing ? 'polygon' : 'select')
 }
 
 onMounted(() => {

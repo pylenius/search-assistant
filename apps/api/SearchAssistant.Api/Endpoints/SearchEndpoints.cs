@@ -111,7 +111,7 @@ public static class SearchEndpoints
                 .ToList(),
             search.Areas
                 .OrderBy(a => a.CreatedAt)
-                .Select(a => new AreaDto(a.Id, a.CreatedByParticipantId, a.CreatedAt, a.Geometry))
+                .Select(a => new AreaDto(a.Id, a.CreatedByParticipantId, a.CreatedAt, a.Geometry, a.Title, a.Color))
                 .ToList(),
             search.Paths
                 .OrderBy(p => p.StartedAt)

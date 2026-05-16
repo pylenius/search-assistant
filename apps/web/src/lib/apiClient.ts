@@ -57,9 +57,13 @@ export const api = {
     return request<ParticipantDto>(`/api/searches/${encodeURIComponent(slug)}/me`,
       {}, sessionToken)
   },
-  addArea(slug: string, geometry: Polygon, sessionToken: string) {
+  addArea(
+    slug: string,
+    body: { geometry: Polygon; title?: string | null; color?: string | null },
+    sessionToken: string,
+  ) {
     return request<AreaDto>(`/api/searches/${encodeURIComponent(slug)}/areas`, {
-      method: 'POST', body: JSON.stringify({ geometry }),
+      method: 'POST', body: JSON.stringify(body),
     }, sessionToken)
   },
   removeArea(slug: string, areaId: string, sessionToken: string) {

@@ -32,7 +32,9 @@ public record AreaDto(
     Guid Id,
     Guid CreatedByParticipantId,
     DateTimeOffset CreatedAt,
-    Polygon Geometry);
+    Polygon Geometry,
+    string? Title,
+    string? Color);
 
 public record PathDto(
     Guid Id,

@@ -34,6 +34,8 @@ export interface AreaDto {
   createdByParticipantId: string
   createdAt: string
   geometry: Polygon
+  title: string | null
+  color: string | null
 }
 
 export interface PathDto {

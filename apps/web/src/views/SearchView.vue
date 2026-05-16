@@ -5,6 +5,8 @@ import type { Polygon } from 'geojson'
 import MapView from '../components/MapView.vue'
 import JoinDialog from '../components/JoinDialog.vue'
 import ParticipantList from '../components/ParticipantList.vue'
+import AreasList from '../components/AreasList.vue'
+import AreaDialog from '../components/AreaDialog.vue'
 import ShareSheet from '../components/ShareSheet.vue'
 import { useSearchStore } from '../stores/searchStore'
 import { api, ApiError } from '../lib/apiClient'
@@ -27,6 +29,8 @@ const joinError = ref<string | null>(null)
 const joining = ref(false)
 const drawing = ref(false)
 const drawError = ref<string | null>(null)
+const pendingPolygon = ref<Polygon | null>(null)
+const savingArea = ref(false)
 const shareOpen = ref(false)
 const shareUrl = computed(() => `${window.location.origin}/s/${props.slug}`)
 const isOwner = computed(() => getOwnerToken(props.slug) !== null)
@@ -128,18 +132,51 @@ function toggleDrawing() {
   drawError.value = null
 }
 
-async function onPolygonFinished(geometry: Polygon) {
+function onPolygonFinished(geometry: Polygon) {
+  // Always exit draw mode after each polygon so the user can interact with the
+  // map again. We hold the geometry while the title/color dialog is open.
   drawing.value = false
+  drawError.value = null
+  pendingPolygon.value = geometry
+}
+
+async function onAreaSave(payload: { title: string | null; color: string }) {
+  if (!pendingPolygon.value) return
   const token = getSessionToken(props.slug)
   if (!token) {
     drawError.value = 'You need to be joined to add areas.'
     return
   }
+  savingArea.value = true
   try {
-    await api.addArea(props.slug, geometry, token)
+    await api.addArea(props.slug, {
+      geometry: pendingPolygon.value,
+      title: payload.title,
+      color: payload.color,
+    }, token)
+    pendingPolygon.value = null
   } catch (e) {
     drawError.value = e instanceof ApiError
       ? `Couldn't save area (${e.status}).`
+      : 'Network error.'
+  } finally {
+    savingArea.value = false
+  }
+}
+
+function onAreaCancel() {
+  pendingPolygon.value = null
+}
+
+async function onAreaRemove(areaId: string) {
+  const token = getSessionToken(props.slug)
+  if (!token) return
+  if (!confirm('Remove this area?')) return
+  try {
+    await api.removeArea(props.slug, areaId, token)
+  } catch (e) {
+    drawError.value = e instanceof ApiError
+      ? `Couldn't remove area (${e.status}).`
       : 'Network error.'
   }
 }
@@ -342,6 +379,15 @@ onBeforeUnmount(() => {
         @join="handleJoin"
       />
 
+      <AreaDialog
+        v-if="pendingPolygon"
+        :default-color="store.me?.color ?? '#3b82f6'"
+        :submitting="savingArea"
+        :error="drawError"
+        @save="onAreaSave"
+        @cancel="onAreaCancel"
+      />
+
       <ShareSheet
         v-if="shareOpen"
         :url="shareUrl"
@@ -351,6 +397,9 @@ onBeforeUnmount(() => {
       />
     </div>
 
-    <ParticipantList class="hidden md:flex" />
+    <aside class="hidden md:flex w-64 bg-white/95 backdrop-blur shadow-lg border-l border-slate-200 flex-col">
+      <ParticipantList />
+      <AreasList @remove="onAreaRemove" />
+    </aside>
   </div>
 </template>

@@ -12,4 +12,7 @@ public class SearchArea
     public Guid CreatedByParticipantId { get; set; }
     public Participant CreatedBy { get; set; } = null!;
     public DateTimeOffset CreatedAt { get; set; }
+
+    public string? Title { get; set; }
+    public string? Color { get; set; }
 }

@@ -37,7 +37,7 @@ const items = computed(() =>
 </script>
 
 <template>
-  <aside class="w-64 bg-white/95 backdrop-blur shadow-lg border-l border-slate-200 flex flex-col">
+  <section class="flex flex-col min-h-0">
     <header class="px-4 py-3 border-b border-slate-200">
       <h3 class="text-sm font-semibold text-slate-700">Participants</h3>
       <p class="text-xs text-slate-500">{{ items.length }} joined</p>
@@ -62,5 +62,5 @@ const items = computed(() =>
         </div>
       </li>
     </ul>
-  </aside>
+  </section>
 </template>
