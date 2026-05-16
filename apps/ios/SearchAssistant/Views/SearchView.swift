@@ -35,6 +35,14 @@ struct SearchView: View {
     @State private var shareSheetShown: Bool = false
     @State private var manageSheetShown: Bool = false
 
+    // Participants panel.
+    @State private var participantsSheetShown: Bool = false
+    /// When set, the map will recenter on this participant's position
+    /// (if known). Stays set until the user picks another or focuses
+    /// nothing, so the map "follows" the chosen participant as new
+    /// positions arrive.
+    @State private var focusedParticipantId: UUID?
+
     /// Client-side throttle so we don't spam the hub if the device emits faster.
     /// Server enforces its own ~700ms rate limit, this is just bandwidth manners.
     @State private var lastSentAt: Date = .distantPast
@@ -48,6 +56,7 @@ struct SearchView: View {
             .sheet(isPresented: $areaSheetShown) { areaSheet }
             .sheet(isPresented: $shareSheetShown) { shareSheet }
             .sheet(isPresented: $manageSheetShown) { manageSheet }
+            .sheet(isPresented: $participantsSheetShown) { participantsSheet }
             .onDisappear {
                 if recorder.isRecording { Task { await recorder.stop() } }
                 location.stop()
@@ -145,6 +154,30 @@ struct SearchView: View {
             }
             .padding(.bottom, 20)
         }
+        .overlay(alignment: .bottomTrailing) {
+            participantsButton
+                .padding(.trailing, 16)
+                .padding(.bottom, 24)
+        }
+    }
+
+    private var participantsButton: some View {
+        Button {
+            participantsSheetShown = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "person.2.fill")
+                Text("\(store.participants.count)")
+                    .font(.subheadline.weight(.semibold))
+                    .monospacedDigit()
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(.regularMaterial, in: Capsule())
+            .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Participants — \(store.participants.count)")
     }
 
     private var recordPathButton: some View {
@@ -220,6 +253,45 @@ struct SearchView: View {
             onClose: { shareSheetShown = false }
         )
         .presentationDetents([.medium, .large])
+    }
+
+    private var participantsSheet: some View {
+        ParticipantsSheet(
+            rows: participantRows,
+            onFocus: { id in
+                focusedParticipantId = id
+                participantsSheetShown = false
+            },
+            onClose: { participantsSheetShown = false }
+        )
+        .presentationDetents([.medium, .large])
+    }
+
+    /// Computed once per render — keeps the sheet's ForEach stable and
+    /// scope the staleness threshold to one place.
+    private var participantRows: [ParticipantsSheet.Row] {
+        let now = Date()
+        let staleAfter: TimeInterval = 5 * 60
+        let myId = store.me?.id
+
+        // me first, then most recently seen.
+        return store.participants.values
+            .sorted { lhs, rhs in
+                if lhs.id == myId { return true }
+                if rhs.id == myId { return false }
+                return lhs.lastSeenAt > rhs.lastSeenAt
+            }
+            .map { p in
+                ParticipantsSheet.Row(
+                    id: p.id,
+                    displayName: p.displayName,
+                    color: p.color,
+                    lastSeenAt: p.lastSeenAt,
+                    hasPosition: store.positions[p.id] != nil,
+                    isMe: p.id == myId,
+                    isStale: now.timeIntervalSince(p.lastSeenAt) > staleAfter
+                )
+            }
     }
 
     @ViewBuilder
@@ -307,19 +379,14 @@ struct SearchView: View {
                     .lineLimit(1)
                 connectionDot
             }
-            HStack(spacing: 5) {
-                Text("/s/\(slug)")
-                    .font(.caption2.monospaced())
-                Text("·")
-                Text("\(store.participants.count) \(store.participants.count == 1 ? "person" : "people")")
-                if let me = store.me {
-                    Text("·")
+            if let me = store.me {
+                HStack(spacing: 5) {
                     Circle().fill(Color(hex: me.color)).frame(width: 6, height: 6)
                     Text(me.displayName).lineLimit(1)
                 }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
         }
     }
 
@@ -354,6 +421,10 @@ struct SearchView: View {
     }
 
     private var mapCenter: CLLocationCoordinate2D {
+        if let id = focusedParticipantId,
+           let pos = store.positions[id] {
+            return CLLocationCoordinate2D(latitude: pos.lat, longitude: pos.lng)
+        }
         if let me = initialUserCenter { return me }
         if let p = store.center {
             return CLLocationCoordinate2D(latitude: p.lat, longitude: p.lng)

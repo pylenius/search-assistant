@@ -47,7 +47,7 @@ struct SearchMapView: UIViewRepresentable {
     func updateUIView(_ map: MKMapView, context: Context) {
         context.coordinator.onTapWhileDrawing = onTapWhileDrawing
         context.coordinator.tapRecognizer?.isEnabled = drawing
-        recenterIfNeeded(map: map)
+        recenterIfNeeded(map: map, coord: context.coordinator)
         diffParticipantAnnotations(map: map)
         diffAreas(map: map)
         diffPaths(map: map)
@@ -58,12 +58,19 @@ struct SearchMapView: UIViewRepresentable {
 
     // MARK: - Recenter
 
-    private func recenterIfNeeded(map: MKMapView) {
-        let current = map.region.center
-        if abs(current.latitude - center.latitude) > 0.01
-           || abs(current.longitude - center.longitude) > 0.01 {
-            map.setRegion(Self.region(center: center, zoom: zoom), animated: true)
+    /// Snap to the desired center only when the *prop* changes — never on
+    /// random update ticks (positions, areas) where we'd otherwise yank the
+    /// user back from wherever they panned to. Tracked via the Coordinator
+    /// so it survives across SwiftUI re-renders.
+    private func recenterIfNeeded(map: MKMapView, coord: Coordinator) {
+        let last = coord.lastAppliedCenter
+        if let last,
+           abs(last.latitude - center.latitude) < 0.000001,
+           abs(last.longitude - center.longitude) < 0.000001 {
+            return
         }
+        coord.lastAppliedCenter = center
+        map.setRegion(Self.region(center: center, zoom: zoom), animated: last != nil)
     }
 
     // MARK: - Participant annotations
@@ -197,6 +204,10 @@ struct SearchMapView: UIViewRepresentable {
 
         weak var tapRecognizer: UITapGestureRecognizer?
         var onTapWhileDrawing: ((CLLocationCoordinate2D) -> Void)?
+        /// Last `center` we actually applied to the map. Used by
+        /// recenterIfNeeded to detect explicit prop changes and ignore
+        /// incidental updateUIView calls.
+        var lastAppliedCenter: CLLocationCoordinate2D?
 
         @objc func handleTap(_ recognizer: UITapGestureRecognizer) {
             guard recognizer.state == .ended,
