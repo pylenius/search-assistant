@@ -143,9 +143,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         if activity.activityType == NSUserActivityTypeBrowsingWeb,
            let url = activity.webpageURL {
             NSLog("[SceneDelegate] posting capacitorOpenUniversalLink %@", url.absoluteString)
+            // AppPlugin casts the object as [String: Any?] — must match exactly
+            // or the cast fails silently. Pass NSURL (bridged) to satisfy its
+            // `object["url"] as? NSURL` check inside makeUrlOpenObject.
+            let payload: [String: Any?] = ["url": url as NSURL]
             NotificationCenter.default.post(
                 name: capacitorOpenUniversalLink,
-                object: ["url": url]
+                object: payload
             )
         }
     }
@@ -160,9 +164,10 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         )
 
         NSLog("[SceneDelegate] posting capacitorOpenURL %@", url.absoluteString)
+        let payload: [String: Any?] = ["url": url as NSURL, "options": [String: Any?]()]
         NotificationCenter.default.post(
             name: capacitorOpenURL,
-            object: ["url": url, "options": [:]] as [String: Any]
+            object: payload
         )
     }
 }
