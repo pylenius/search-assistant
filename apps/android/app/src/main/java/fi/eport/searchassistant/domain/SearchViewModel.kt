@@ -9,6 +9,8 @@ import fi.eport.searchassistant.data.api.JoinRequest
 import fi.eport.searchassistant.data.api.ParticipantDto
 import fi.eport.searchassistant.data.api.PathDto
 import fi.eport.searchassistant.data.api.SearchSnapshotDto
+import fi.eport.searchassistant.data.api.StartPathRequest
+import fi.eport.searchassistant.data.api.UpdatePathRequest
 import fi.eport.searchassistant.data.api.httpStatus
 import fi.eport.searchassistant.data.realtime.HubEvent
 import fi.eport.searchassistant.data.realtime.SignalRService
@@ -16,6 +18,7 @@ import fi.eport.searchassistant.data.recents.RecentSearchesStore
 import fi.eport.searchassistant.data.session.SessionStore
 import fi.eport.searchassistant.location.GeoFix
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -173,9 +176,111 @@ class SearchViewModel(
 
     fun handleFix(fix: GeoFix) {
         val now = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
-        if (now - lastSentEpochMs < minSendIntervalMs) return
-        lastSentEpochMs = now
-        signalR.sendPosition(fix.lng, fix.lat, fix.accuracyMeters, fix.headingDegrees)
+        if (now - lastSentEpochMs >= minSendIntervalMs) {
+            lastSentEpochMs = now
+            signalR.sendPosition(fix.lng, fix.lat, fix.accuracyMeters, fix.headingDegrees)
+        }
+        // Tee fixes into the path recorder; no-op when not recording.
+        if (_isRecording.value) {
+            synchronized(pathBuffer) {
+                pathBuffer.add(listOf(fix.lng, fix.lat))
+            }
+        }
+    }
+
+    // MARK: - Path recording ---------------------------------------
+
+    private val _isRecording = MutableStateFlow(false)
+    val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
+
+    private val _recordError = MutableStateFlow<String?>(null)
+    val recordError: StateFlow<String?> = _recordError.asStateFlow()
+
+    private val pathBuffer = ArrayDeque<List<Double>>()
+    private var recordingPathId: UUID? = null
+    private var recordingJob: Job? = null
+    private var flushInFlight = false
+    private val pathFlushMs = 5_000L
+
+    fun startRecording() {
+        if (_isRecording.value) return
+        if (state.value.me == null) return
+        _isRecording.value = true
+        _recordError.value = null
+        recordingPathId = null
+        synchronized(pathBuffer) { pathBuffer.clear() }
+        recordingJob = viewModelScope.launch {
+            while (true) {
+                delay(pathFlushMs)
+                flushPath()
+            }
+        }
+    }
+
+    fun stopRecording() {
+        if (!_isRecording.value) return
+        _isRecording.value = false
+        val job = recordingJob
+        recordingJob = null
+        viewModelScope.launch {
+            job?.cancel()
+            // Final drain + finalize.
+            flushPath()
+            val pid = recordingPathId
+            val token = state.value.me?.sessionToken
+            if (pid != null && token != null) {
+                runCatching {
+                    apiClient.service.updatePath(
+                        slug, pid,
+                        UpdatePathRequest(finalize = true),
+                        token,
+                    )
+                }
+            }
+            recordingPathId = null
+        }
+    }
+
+    private suspend fun flushPath() {
+        if (flushInFlight) return
+        val token = state.value.me?.sessionToken ?: return
+        val points: List<List<Double>>
+        synchronized(pathBuffer) {
+            if (pathBuffer.isEmpty()) return
+            points = pathBuffer.toList()
+            pathBuffer.clear()
+        }
+        flushInFlight = true
+        try {
+            if (recordingPathId == null) {
+                if (points.size < 2) {
+                    // Server requires ≥2 points on the initial POST. Stash
+                    // these back for the next flush.
+                    synchronized(pathBuffer) {
+                        pathBuffer.addAll(0, points)
+                    }
+                    return
+                }
+                val dto = apiClient.service.startPath(
+                    slug, StartPathRequest(points = points), token)
+                recordingPathId = dto.id
+            } else {
+                apiClient.service.updatePath(
+                    slug, recordingPathId!!,
+                    UpdatePathRequest(points = points),
+                    token,
+                )
+            }
+        } catch (t: Throwable) {
+            _recordError.value = t.httpStatus?.let { "Couldn't save path (HTTP $it)." }
+                ?: "Network error saving path."
+            // Re-insert so the next flush retries.
+            synchronized(pathBuffer) {
+                pathBuffer.addAll(0, points)
+            }
+        } finally {
+            flushInFlight = false
+        }
     }
 
     // MARK: - Hydrate from REST ------------------------------------

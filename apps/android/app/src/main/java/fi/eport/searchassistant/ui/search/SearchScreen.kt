@@ -11,8 +11,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.IosShare
+import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.SettingsApplications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -60,6 +62,8 @@ fun SearchScreen(
     val locationController = container.locationController
     val isWatching by locationController.isWatching.collectAsStateWithLifecycle()
     val locationError by locationController.lastError.collectAsStateWithLifecycle()
+    val isRecording by viewModel.isRecording.collectAsStateWithLifecycle()
+    val recordError by viewModel.recordError.collectAsStateWithLifecycle()
 
     // Feed fixes from the service into the VM. The flow keeps emitting
     // while the service runs; the LaunchedEffect ends when the screen
@@ -94,6 +98,32 @@ fun SearchScreen(
                     Manifest.permission.ACCESS_COARSE_LOCATION,
                 ))
             }
+        }
+    }
+
+    fun toggleRecording() {
+        if (isRecording) {
+            viewModel.stopRecording()
+        } else {
+            // Path recording needs fixes; auto-enable Share Location if
+            // it's off so the user doesn't have to flip two toggles.
+            if (!isWatching) {
+                val finePermission = ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.ACCESS_FINE_LOCATION
+                )
+                if (finePermission == PackageManager.PERMISSION_GRANTED) {
+                    LocationService.start(context)
+                } else {
+                    permissionLauncher.launch(arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                    ))
+                    // User will see the prompt; recording starts on
+                    // their next tap once permission is granted.
+                    return
+                }
+            }
+            viewModel.startRecording()
         }
     }
 
@@ -205,6 +235,11 @@ fun SearchScreen(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                RecordChip(
+                    isRecording = isRecording,
+                    enabled = state.me != null,
+                    onToggle = { toggleRecording() },
+                )
                 ShareLocationChip(
                     isWatching = isWatching,
                     enabled = state.me != null,
@@ -212,8 +247,10 @@ fun SearchScreen(
                 )
             }
 
-            // Bottom error toast for permission failures, etc.
-            locationError?.let { msg ->
+            // Bottom error toast for permission failures, path-flush
+            // errors, etc.
+            val bottomMsg = recordError ?: locationError
+            bottomMsg?.let { msg ->
                 Surface(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -241,6 +278,34 @@ fun SearchScreen(
             )
         }
     }
+}
+
+@Composable
+private fun RecordChip(
+    isRecording: Boolean,
+    enabled: Boolean,
+    onToggle: () -> Unit,
+) {
+    AssistChip(
+        onClick = onToggle,
+        enabled = enabled,
+        label = { Text(if (isRecording) "Recording" else "Record") },
+        leadingIcon = {
+            Icon(
+                if (isRecording) Icons.Filled.RadioButtonChecked
+                else Icons.Filled.FiberManualRecord,
+                contentDescription = null,
+                tint = if (isRecording) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        colors = if (isRecording)
+            AssistChipDefaults.assistChipColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+                labelColor = MaterialTheme.colorScheme.onErrorContainer,
+            )
+        else AssistChipDefaults.assistChipColors(),
+    )
 }
 
 @Composable
