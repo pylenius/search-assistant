@@ -3,7 +3,9 @@ import MapKit
 
 /// SwiftUI wrapper around MKMapView. Owns initial framing only; live state
 /// (positions, areas, paths) is fed in via parameters and diffed onto the
-/// underlying map view in `updateUIView`.
+/// underlying map view in `updateUIView`. When `drawing` is true a single
+/// finger tap appends a point to the draft polyline; the host view owns
+/// the `draftPoints` array.
 struct SearchMapView: UIViewRepresentable {
     var center: CLLocationCoordinate2D
     var zoom: Int
@@ -11,6 +13,9 @@ struct SearchMapView: UIViewRepresentable {
     var participants: [UUID: ParticipantDto]
     var areas: [UUID: AreaDto]
     var paths: [UUID: PathDto]
+    var drawing: Bool = false
+    var draftPoints: [CLLocationCoordinate2D] = []
+    var onTapWhileDrawing: ((CLLocationCoordinate2D) -> Void)? = nil
 
     /// How long without an update before a marker fades.
     static let staleAfter: TimeInterval = 5 * 60
@@ -26,14 +31,27 @@ struct SearchMapView: UIViewRepresentable {
         map.register(MKAnnotationView.self,
                      forAnnotationViewWithReuseIdentifier: Coordinator.participantReuseID)
         map.setRegion(Self.region(center: center, zoom: zoom), animated: false)
+
+        let tap = UITapGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleTap(_:)))
+        tap.delegate = context.coordinator
+        tap.cancelsTouchesInView = false
+        map.addGestureRecognizer(tap)
+        context.coordinator.tapRecognizer = tap
+        context.coordinator.tapRecognizer?.isEnabled = drawing
+
         return map
     }
 
     func updateUIView(_ map: MKMapView, context: Context) {
+        context.coordinator.onTapWhileDrawing = onTapWhileDrawing
+        context.coordinator.tapRecognizer?.isEnabled = drawing
         recenterIfNeeded(map: map)
         diffParticipantAnnotations(map: map)
         diffAreas(map: map)
         diffPaths(map: map)
+        diffDraft(map: map)
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -107,7 +125,7 @@ struct SearchMapView: UIViewRepresentable {
 
             if let prev = existing[aid] {
                 if prev.geometryHash == newHash && prev.color == color {
-                    continue  // unchanged
+                    continue
                 }
                 map.removeOverlay(prev)
             }
@@ -147,6 +165,22 @@ struct SearchMapView: UIViewRepresentable {
         if !toRemove.isEmpty { map.removeOverlays(toRemove) }
     }
 
+    // MARK: - Draft polyline (in-progress drawing)
+
+    private func diffDraft(map: MKMapView) {
+        let existing = map.overlays.compactMap { $0 as? DraftPolyline }
+        if !existing.isEmpty { map.removeOverlays(existing) }
+
+        guard drawing && draftPoints.count >= 2 else { return }
+        // Close the loop visually as soon as we have ≥3 points.
+        var coords = draftPoints
+        if coords.count >= 3, let first = coords.first {
+            coords.append(first)
+        }
+        let line = DraftPolyline(coordinates: &coords, count: coords.count)
+        map.addOverlay(line)
+    }
+
     // MARK: - Region helper
 
     private static func region(center: CLLocationCoordinate2D, zoom: Int) -> MKCoordinateRegion {
@@ -158,8 +192,25 @@ struct SearchMapView: UIViewRepresentable {
 
     // MARK: - Coordinator
 
-    final class Coordinator: NSObject, MKMapViewDelegate {
+    final class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
         static let participantReuseID = "participant"
+
+        weak var tapRecognizer: UITapGestureRecognizer?
+        var onTapWhileDrawing: ((CLLocationCoordinate2D) -> Void)?
+
+        @objc func handleTap(_ recognizer: UITapGestureRecognizer) {
+            guard recognizer.state == .ended,
+                  let map = recognizer.view as? MKMapView else { return }
+            let point = recognizer.location(in: map)
+            let coord = map.convert(point, toCoordinateFrom: map)
+            onTapWhileDrawing?(coord)
+        }
+
+        // Let MKMapView keep its own pan/pinch gestures alongside our tap.
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            true
+        }
 
         func mapView(_ mapView: MKMapView, viewFor annotation: any MKAnnotation) -> MKAnnotationView? {
             guard let p = annotation as? ParticipantAnnotation else { return nil }
@@ -187,9 +238,15 @@ struct SearchMapView: UIViewRepresentable {
                 r.lineCap = .round
                 r.lineJoin = .round
                 if !path.finalized {
-                    // In-progress paths are dashed so they read as "still recording".
                     r.lineDashPattern = [6, 4]
                 }
+                return r
+            }
+            if let draft = overlay as? DraftPolyline {
+                let r = MKPolylineRenderer(polyline: draft)
+                r.strokeColor = UIColor.systemOrange
+                r.lineWidth = 3
+                r.lineDashPattern = [4, 4]
                 return r
             }
             return MKOverlayRenderer(overlay: overlay)

@@ -22,6 +22,11 @@ final class PathPolyline: MKPolyline {
     var fingerprint: Int = 0
 }
 
+/// Transient polyline rendered while the user is drawing a new search area.
+/// Treated as a singleton overlay — SearchMapView removes + replaces it on
+/// every tap. Styled dashed-orange by the Coordinator's rendererFor.
+final class DraftPolyline: MKPolyline {}
+
 // MARK: - Builders
 
 enum OverlayShapes {
