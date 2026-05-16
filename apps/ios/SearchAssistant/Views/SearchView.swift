@@ -370,6 +370,12 @@ struct SearchView: View {
             let snap = try await ApiClient.shared.getSearch(slug: slug)
             store.hydrate(snap)
             didLoad = true
+            // Remember this search on the device so the landing screen can
+            // offer it as a quick re-entry next time.
+            RecentSearchesStore.shared.upsert(
+                slug: slug,
+                title: snap.title,
+                isOwner: SessionStore.shared.ownerToken(for: slug) != nil)
             // Fire-and-forget one-shot location request to recenter the map.
             // No-op if permission is denied; uses the cached fix if one is
             // already on hand.
@@ -379,6 +385,8 @@ struct SearchView: View {
             await resolveIdentityAndConnect()
         } catch let ApiError.status(404, _) {
             loadError = "This search doesn't exist. It may have expired."
+            // Drop it from recents — there's nothing to come back to.
+            RecentSearchesStore.shared.remove(slug: slug)
         } catch let ApiError.status(code, _) {
             loadError = "HTTP \(code) loading search."
         } catch {

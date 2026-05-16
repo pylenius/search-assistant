@@ -7,6 +7,7 @@ struct ContentView: View {
     var body: some View {
         NavigationStack(path: $path) {
             LandingView { slug in
+                if path.last == slug { return }
                 path.append(slug)
             }
             .navigationDestination(for: String.self) { slug in
