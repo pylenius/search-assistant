@@ -48,6 +48,15 @@ public class Program
 
         var app = builder.Build();
 
+        // Apply any pending EF Core migrations on startup. Small enough scale that
+        // bundling this into the same process is fine; if we later need zero-downtime
+        // deploys with schema changes, split this into a separate one-shot job.
+        using (var scope = app.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Database.Migrate();
+        }
+
         if (app.Environment.IsDevelopment())
         {
             app.MapOpenApi();
