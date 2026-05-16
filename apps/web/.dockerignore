@@ -1,0 +1,8 @@
+node_modules
+dist
+ios
+android
+.vite
+.env.local
+.env.*.local
+**/.DS_Store

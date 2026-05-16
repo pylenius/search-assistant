@@ -37,6 +37,17 @@ open ios/App/App.xcworkspace   # then set signing + Product → Archive
 - Mobile: Capacitor (iOS first, Android later)
 - Hosting: Docker Compose on a single VM, Caddy for TLS
 
+## Publishing
+
+```sh
+./docker-publish.sh
+```
+
+Builds `searchassistant-api` and `searchassistant-web` for `linux/amd64`,
+tags them as `docker-repository.eport.fi/searchassistant-{api,web}:latest`,
+and pushes. Override the target API URL baked into the SPA with
+`VITE_API_BASE=https://your-host ./docker-publish.sh`.
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).
