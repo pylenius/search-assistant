@@ -43,6 +43,8 @@ fun SearchScreen(
     )
     val state by viewModel.state.collectAsStateWithLifecycle()
     val phase by viewModel.phase.collectAsStateWithLifecycle()
+    val needsJoin by viewModel.needsJoin.collectAsStateWithLifecycle()
+    val joinError by viewModel.joinError.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -139,6 +141,15 @@ fun SearchScreen(
                 }
                 LoadPhase.Loaded -> Unit
             }
+        }
+
+        if (needsJoin) {
+            JoinSheet(
+                searchTitle = state.title.ifEmpty { "Search" },
+                joinError = joinError,
+                onJoin = { viewModel.join(it) },
+                onCancel = { viewModel.cancelJoin() },
+            )
         }
     }
 }
