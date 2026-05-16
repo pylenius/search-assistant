@@ -36,3 +36,7 @@ open ios/App/App.xcworkspace   # then set signing + Product → Archive
 - Frontend: Vue 3 + Vite + TypeScript + MapLibre GL JS + Tailwind
 - Mobile: Capacitor (iOS first, Android later)
 - Hosting: Docker Compose on a single VM, Caddy for TLS
+
+## License
+
+MIT — see [LICENSE](./LICENSE).
