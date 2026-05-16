@@ -221,7 +221,18 @@ if "CODE_SIGN_ENTITLEMENTS = App/App.entitlements;" not in c:
         "CODE_SIGN_ENTITLEMENTS = App/App.entitlements;\n\t\t\t\tCODE_SIGN_IDENTITY"
     )
 
-# 3) Add SceneDelegate.swift as a Swift source. Capacitor's default project
+# 3) -ObjC linker flag. Without this the linker dead-strips @objc Capacitor
+#    plugin classes (e.g. AppPlugin from @capacitor/app) that live in SPM
+#    static libraries because no Swift code in the main module references
+#    them directly. NSClassFromString lookups then return nil and Capacitor
+#    silently skips the plugin → all its JS calls return UNIMPLEMENTED.
+if '"-ObjC"' not in c:
+    c = c.replace(
+        "SWIFT_VERSION = 5.0;",
+        'SWIFT_VERSION = 5.0;\n\t\t\t\tOTHER_LDFLAGS = (\n\t\t\t\t\t"$(inherited)",\n\t\t\t\t\t"-ObjC",\n\t\t\t\t);'
+    )
+
+# 4) Add SceneDelegate.swift as a Swift source. Capacitor's default project
 #    has AppDelegate.swift in the same group / Sources phase; we mirror that.
 SCENE_FILE_REF = "5C3E0E0A2A0B0001000A0001"
 SCENE_BUILD_FILE = "5C3E0E0A2A0B0001000A0002"
@@ -251,6 +262,7 @@ if "SceneDelegate.swift" not in c:
 pbx.write_text(c)
 print(f"  team set: DEVELOPMENT_TEAM = $TEAM_ID")
 print(f"  entitlements: CODE_SIGN_ENTITLEMENTS = App/App.entitlements")
+print(f"  OTHER_LDFLAGS: -ObjC injected")
 print(f"  SceneDelegate.swift: added (id {SCENE_FILE_REF})")
 PYEOF
 
@@ -265,6 +277,7 @@ echo "  Entitlements:"
 plutil -p "$ENT" | sed 's/^/    /'
 echo "  DEVELOPMENT_TEAM lines in pbxproj: $(grep -c "DEVELOPMENT_TEAM = $TEAM_ID" "$PBXPROJ")"
 echo "  CODE_SIGN_ENTITLEMENTS lines in pbxproj: $(grep -c "CODE_SIGN_ENTITLEMENTS = App/App.entitlements;" "$PBXPROJ")"
+echo "  -ObjC linker flag: $(grep -c '"-ObjC"' "$PBXPROJ") occurrence(s)"
 echo "  SceneDelegate referenced: $(grep -c "SceneDelegate.swift" "$PBXPROJ") line(s)"
 
 cat <<EOF
