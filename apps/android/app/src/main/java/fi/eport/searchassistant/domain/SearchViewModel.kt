@@ -14,6 +14,7 @@ import fi.eport.searchassistant.data.realtime.HubEvent
 import fi.eport.searchassistant.data.realtime.SignalRService
 import fi.eport.searchassistant.data.recents.RecentSearchesStore
 import fi.eport.searchassistant.data.session.SessionStore
+import fi.eport.searchassistant.location.GeoFix
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -160,6 +161,21 @@ class SearchViewModel(
 
     fun sendPosition(lng: Double, lat: Double, accuracy: Double, heading: Double?) {
         signalR.sendPosition(lng, lat, accuracy, heading)
+    }
+
+    // MARK: - Location fix handling --------------------------------
+
+    /// Client-side throttle to keep us from spamming the hub if the
+    /// device emits faster. The server already rate-limits ~700 ms
+    /// per participant; this is just bandwidth manners.
+    private var lastSentEpochMs: Long = 0
+    private val minSendIntervalMs = 1_000L
+
+    fun handleFix(fix: GeoFix) {
+        val now = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+        if (now - lastSentEpochMs < minSendIntervalMs) return
+        lastSentEpochMs = now
+        signalR.sendPosition(fix.lng, fix.lat, fix.accuracyMeters, fix.headingDegrees)
     }
 
     // MARK: - Hydrate from REST ------------------------------------

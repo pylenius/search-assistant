@@ -1,5 +1,9 @@
 package fi.eport.searchassistant.ui.search
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -7,6 +11,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.IosShare
+import androidx.compose.material.icons.filled.LocationOff
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.SettingsApplications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -14,8 +20,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.android.gms.maps.model.LatLng
@@ -23,7 +31,9 @@ import fi.eport.searchassistant.AppContainer
 import fi.eport.searchassistant.domain.ConnectionState
 import fi.eport.searchassistant.domain.LoadPhase
 import fi.eport.searchassistant.domain.SearchViewModel
+import fi.eport.searchassistant.location.LocationService
 import fi.eport.searchassistant.util.toComposeColor
+import kotlinx.coroutines.flow.collect
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,6 +55,47 @@ fun SearchScreen(
     val phase by viewModel.phase.collectAsStateWithLifecycle()
     val needsJoin by viewModel.needsJoin.collectAsStateWithLifecycle()
     val joinError by viewModel.joinError.collectAsStateWithLifecycle()
+
+    val context = LocalContext.current
+    val locationController = container.locationController
+    val isWatching by locationController.isWatching.collectAsStateWithLifecycle()
+    val locationError by locationController.lastError.collectAsStateWithLifecycle()
+
+    // Feed fixes from the service into the VM. The flow keeps emitting
+    // while the service runs; the LaunchedEffect ends when the screen
+    // leaves composition, which is also when LocationService.stop()
+    // gets called downstream.
+    LaunchedEffect(viewModel) {
+        locationController.fixes.collect { fix ->
+            viewModel.handleFix(fix)
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        val granted = results[Manifest.permission.ACCESS_FINE_LOCATION] == true
+            || results[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) LocationService.start(context)
+    }
+
+    fun toggleShareLocation() {
+        if (isWatching) {
+            LocationService.stop(context)
+        } else {
+            val finePermission = ContextCompat.checkSelfPermission(
+                context, Manifest.permission.ACCESS_FINE_LOCATION
+            )
+            if (finePermission == PackageManager.PERMISSION_GRANTED) {
+                LocationService.start(context)
+            } else {
+                permissionLauncher.launch(arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                ))
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -145,6 +196,40 @@ fun SearchScreen(
                 }
                 LoadPhase.Loaded -> Unit
             }
+
+            // Floating chips, top-right under the toolbar.
+            Row(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(padding)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ShareLocationChip(
+                    isWatching = isWatching,
+                    enabled = state.me != null,
+                    onToggle = { toggleShareLocation() },
+                )
+            }
+
+            // Bottom error toast for permission failures, etc.
+            locationError?.let { msg ->
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(20.dp),
+                    tonalElevation = 4.dp,
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                ) {
+                    Text(
+                        msg,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
         }
 
         if (needsJoin) {
@@ -156,6 +241,32 @@ fun SearchScreen(
             )
         }
     }
+}
+
+@Composable
+private fun ShareLocationChip(
+    isWatching: Boolean,
+    enabled: Boolean,
+    onToggle: () -> Unit,
+) {
+    AssistChip(
+        onClick = onToggle,
+        enabled = enabled,
+        label = { Text(if (isWatching) "Sharing" else "Share location") },
+        leadingIcon = {
+            Icon(
+                if (isWatching) Icons.Filled.LocationOn else Icons.Filled.LocationOff,
+                contentDescription = null,
+            )
+        },
+        colors = if (isWatching)
+            AssistChipDefaults.assistChipColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                labelColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                leadingIconContentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            )
+        else AssistChipDefaults.assistChipColors(),
+    )
 }
 
 @Composable
