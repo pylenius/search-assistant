@@ -56,6 +56,34 @@ struct SearchView: View {
             .onChange(of: store.endedRemotely) { ended in
                 if ended { loadError = "The owner ended this search." }
             }
+            .toolbar {
+                if didLoad && loadError == nil {
+                    ToolbarItem(placement: .principal) {
+                        toolbarBadge
+                    }
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button {
+                            shareSheetShown = true
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                        .accessibilityLabel("Share")
+                    }
+                    if isOwner {
+                        ToolbarItem(placement: .navigationBarTrailing) {
+                            Button {
+                                manageSheetShown = true
+                            } label: {
+                                Image(systemName: "slider.horizontal.3")
+                            }
+                            .accessibilityLabel("Manage")
+                        }
+                    }
+                }
+            }
+            // Transparent nav bar so the map shows through behind the
+            // back chevron + title badge.
+            .toolbarBackground(.hidden, for: .navigationBar)
     }
 
     private var isOwner: Bool {
@@ -75,7 +103,7 @@ struct SearchView: View {
     }
 
     private var mapStack: some View {
-        ZStack(alignment: .topLeading) {
+        ZStack(alignment: .topTrailing) {
             SearchMapView(
                 center: mapCenter,
                 zoom: store.defaultZoom,
@@ -89,13 +117,12 @@ struct SearchView: View {
                     draftPoints.append(coord)
                 }
             )
-            .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
+            // Edge to edge — the nav bar background is hidden in body,
+            // so the map shows through behind the toolbar / status bar.
+            .ignoresSafeArea()
 
-            titleBadge
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
-        }
-        .overlay(alignment: .topTrailing) {
+            // Action chips sit just under the toolbar (still in safe area
+            // because they're a child of the safe-area-respecting ZStack).
             HStack(spacing: 8) {
                 drawButton
                 recordPathButton
@@ -268,59 +295,32 @@ struct SearchView: View {
 
     // MARK: - Subviews
 
-    private var titleBadge: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
+    /// Compact two-line title shown in the nav bar's principal slot,
+    /// next to the back chevron. No background — the toolbar handles the
+    /// chrome, and where the toolbar background is hidden the badge still
+    /// reads cleanly because Apple Maps backgrounds are pale.
+    private var toolbarBadge: some View {
+        VStack(spacing: 1) {
+            HStack(spacing: 6) {
                 Text(store.title.isEmpty ? "Search" : store.title)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
-                Button {
-                    shareSheetShown = true
-                } label: {
-                    Label("Share", systemImage: "square.and.arrow.up")
-                        .labelStyle(.iconOnly)
-                        .font(.caption.weight(.semibold))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.accentColor.opacity(0.15), in: Capsule())
-                        .foregroundStyle(Color.accentColor)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Share")
-                if isOwner {
-                    Button {
-                        manageSheetShown = true
-                    } label: {
-                        Label("Manage", systemImage: "slider.horizontal.3")
-                            .labelStyle(.iconOnly)
-                            .font(.caption.weight(.semibold))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.secondary.opacity(0.15), in: Capsule())
-                            .foregroundStyle(.primary)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Manage")
-                }
+                connectionDot
             }
-            HStack(spacing: 6) {
+            HStack(spacing: 5) {
                 Text("/s/\(slug)")
                     .font(.caption2.monospaced())
                 Text("·")
                 Text("\(store.participants.count) \(store.participants.count == 1 ? "person" : "people")")
                 if let me = store.me {
                     Text("·")
-                    Circle().fill(Color(hex: me.color)).frame(width: 8, height: 8)
+                    Circle().fill(Color(hex: me.color)).frame(width: 6, height: 6)
                     Text(me.displayName).lineLimit(1)
                 }
-                connectionDot
             }
             .font(.caption2)
             .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     @ViewBuilder
