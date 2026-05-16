@@ -1,0 +1,11 @@
+# xcodegen output — regenerate locally with `xcodegen`.
+SearchAssistant.xcodeproj/
+
+# Build artifacts
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# macOS
+.DS_Store

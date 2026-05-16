@@ -1,0 +1,76 @@
+name: SearchAssistant
+options:
+  bundleIdPrefix: fi.eport
+  deploymentTarget:
+    iOS: "16.0"
+  developmentLanguage: en
+  createIntermediateGroups: true
+  defaultConfig: Debug
+
+configs:
+  Debug: debug
+  Release: release
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: HEJK7U967E
+    SWIFT_VERSION: "5.9"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    CODE_SIGN_STYLE: Automatic
+
+packages:
+  SignalRClient:
+    url: https://github.com/moozzyk/SignalR-Client-Swift
+    from: 1.1.0
+
+targets:
+  SearchAssistant:
+    type: application
+    platform: iOS
+    sources:
+      - path: SearchAssistant
+        excludes:
+          - "Preview Content/**"
+      - path: SearchAssistant/Preview Content
+        buildPhase:
+          resources
+        type: folder
+    resources:
+      - SearchAssistant/Resources/Assets.xcassets
+    info:
+      path: SearchAssistant/Info.plist
+      properties:
+        CFBundleDisplayName: Search Assistant
+        UILaunchScreen:
+          UIColorName: AccentColor
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIBackgroundModes:
+          - location
+        NSLocationWhenInUseUsageDescription: >-
+          Search Assistant uses your location to share it with your search
+          group.
+        NSLocationAlwaysAndWhenInUseUsageDescription: >-
+          Search Assistant keeps recording your path even when the screen is
+          off, so the group can see where you have been.
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: fi.eport.searchassistant
+        CODE_SIGN_ENTITLEMENTS: SearchAssistant/SearchAssistant.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1,2"
+        DEVELOPMENT_ASSET_PATHS: "\"SearchAssistant/Preview Content\""
+        SUPPORTS_MACCATALYST: NO
+    dependencies:
+      - package: SignalRClient
+        product: SignalRClient
