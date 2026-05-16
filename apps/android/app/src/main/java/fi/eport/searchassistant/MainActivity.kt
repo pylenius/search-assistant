@@ -46,7 +46,11 @@ private fun AppNavHost(container: AppContainer) {
             arguments = listOf(navArgument(Routes.ARG_SLUG) { type = NavType.StringType }),
         ) { backStackEntry ->
             val slug = backStackEntry.arguments?.getString(Routes.ARG_SLUG).orEmpty()
-            SearchScreen(slug = slug)
+            SearchScreen(
+                slug = slug,
+                container = container,
+                onBack = { navController.popBackStack() },
+            )
         }
     }
 }
