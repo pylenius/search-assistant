@@ -112,6 +112,8 @@ fun SearchScreen(
                 initialZoom = state.defaultZoom,
                 positions = state.positions,
                 participants = state.participants,
+                areas = state.areas,
+                paths = state.paths,
                 modifier = Modifier.fillMaxSize(),
             )
             // Loading + error overlays respect the scaffold padding so

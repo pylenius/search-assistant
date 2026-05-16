@@ -9,7 +9,10 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.Dash
+import com.google.android.gms.maps.model.Gap
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.GoogleMap
@@ -18,13 +21,19 @@ import com.google.maps.android.compose.MapType
 import com.google.maps.android.compose.MapUiSettings
 import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MarkerState
+import com.google.maps.android.compose.Polygon
+import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
+import fi.eport.searchassistant.data.api.AreaDto
 import fi.eport.searchassistant.data.api.ParticipantDto
+import fi.eport.searchassistant.data.api.PathDto
 import fi.eport.searchassistant.data.api.PositionUpdateDto
+import fi.eport.searchassistant.util.toComposeColor
 import kotlinx.coroutines.delay
 import kotlinx.datetime.Clock
 import java.util.UUID
 import kotlin.time.Duration.Companion.seconds
+import androidx.compose.ui.graphics.Color as ComposeColor
 
 /// Helsinki fallback — same as iOS.
 private val FallbackCenter = LatLng(60.17, 24.94)
@@ -32,12 +41,16 @@ private val FallbackCenter = LatLng(60.17, 24.94)
 /// How long without an update before a marker fades.
 private const val STALE_AFTER_SECONDS = 5L * 60
 
+private const val FALLBACK_COLOR = "#888888"
+
 @Composable
 fun SearchMap(
     initialCenter: LatLng?,
     initialZoom: Int,
     positions: Map<UUID, PositionUpdateDto>,
     participants: Map<UUID, ParticipantDto>,
+    areas: Map<UUID, AreaDto>,
+    paths: Map<UUID, PathDto>,
     modifier: Modifier = Modifier,
 ) {
     val center = initialCenter ?: FallbackCenter
@@ -53,8 +66,6 @@ fun SearchMap(
         }
     }
 
-    // Tick a "now" state every 15 s so marker staleness re-evaluates
-    // without depending on new PositionUpdated events.
     val nowEpoch by produceState(initialValue = Clock.System.now().epochSeconds) {
         while (true) {
             value = Clock.System.now().epochSeconds
@@ -76,22 +87,54 @@ fun SearchMap(
             mapToolbarEnabled = false,
         ),
     ) {
+        // Areas first so they sit under paths + markers.
+        areas.values.forEach { area ->
+            val outer = area.geometry.coordinates.firstOrNull() ?: return@forEach
+            val points = outer.map { LatLng(it[1], it[0]) }
+            // Per-area override → creator color → gray. Same fallback
+            // chain as iOS diffAreas.
+            val hex = area.color
+                ?: participants[area.createdByParticipantId]?.color
+                ?: FALLBACK_COLOR
+            val color = hex.toComposeColor()
+            Polygon(
+                points = points,
+                strokeColor = color,
+                fillColor = color.copy(alpha = 0.18f),
+                strokeWidth = 4f,
+            )
+        }
+
+        // Paths.
+        paths.values.forEach { path ->
+            val coords = path.geometry.coordinates
+            if (coords.size < 2) return@forEach
+            val points = coords.map { LatLng(it[1], it[0]) }
+            val hex = participants[path.participantId]?.color ?: FALLBACK_COLOR
+            val color = hex.toComposeColor()
+            val finalized = path.endedAt != null
+            Polyline(
+                points = points,
+                color = color,
+                width = 8f,
+                jointType = com.google.android.gms.maps.model.JointType.ROUND,
+                startCap = com.google.android.gms.maps.model.RoundCap(),
+                endCap = com.google.android.gms.maps.model.RoundCap(),
+                pattern = if (!finalized) listOf(Dash(24f), Gap(16f)) else null,
+            )
+        }
+
+        // Markers above everything.
         positions.forEach { (id, pos) ->
             val p = participants[id]
-            val color = p?.color ?: "#888888"
+            val color = p?.color ?: FALLBACK_COLOR
             val stale = (nowEpoch - pos.recordedAt.epochSeconds) > STALE_AFTER_SECONDS
-            // MarkerState is remembered by id+coord, so identical
-            // back-to-back position updates won't recreate it.
             val markerState = remember(id) {
                 MarkerState(position = LatLng(pos.lat, pos.lng))
             }
-            // Keep the marker's position in sync when the participant moves.
             LaunchedEffect(pos.lat, pos.lng) {
                 markerState.position = LatLng(pos.lat, pos.lng)
             }
-            // anchor (0.5, 0.5) centres the circle bitmap on the
-            // coordinate; the default (0.5, 1.0) would hang it off
-            // the lat/lng like a pin tail.
             Marker(
                 state = markerState,
                 icon = MarkerBitmaps.circle(color, stale),
