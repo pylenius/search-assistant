@@ -22,6 +22,24 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Optional release signing — looks for app/release.keystore at build
+    // time and reads passwords from local.properties via the secrets-
+    // gradle-plugin (RELEASE_STORE_PASSWORD / RELEASE_KEY_PASSWORD /
+    // RELEASE_KEY_ALIAS). When the keystore is missing (debug-only dev
+    // workflow), the release build falls back to the debug keystore so
+    // `./gradlew bundleRelease` still produces an installable AAB.
+    signingConfigs {
+        val releaseKeystore = file("release.keystore")
+        if (releaseKeystore.exists()) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = providers.gradleProperty("RELEASE_STORE_PASSWORD").orNull
+                keyAlias = providers.gradleProperty("RELEASE_KEY_ALIAS").orNull ?: "release"
+                keyPassword = providers.gradleProperty("RELEASE_KEY_PASSWORD").orNull
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false  // flip on once ProGuard rules are tuned
@@ -29,6 +47,8 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.findByName("release")
+                ?: signingConfigs.getByName("debug")
         }
         debug {
             applicationIdSuffix = ".debug"

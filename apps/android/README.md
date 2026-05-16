@@ -30,6 +30,45 @@ Native Android client. Parity target: the iOS app at `apps/ios/`.
 
 Outputs land in `app/build/outputs/apk/` and `app/build/outputs/bundle/`.
 
+## Release signing + Play Console upload
+
+The release config looks for `app/release.keystore` at build time. If
+present, it signs the AAB; if absent, it falls back to the debug
+keystore so `bundleRelease` always produces an installable artifact
+even before a real keystore exists.
+
+To create the release keystore:
+
+```
+cd app
+keytool -genkeypair -v -keystore release.keystore \
+    -alias release -keyalg RSA -keysize 4096 -validity 10000
+```
+
+Then put the passwords + alias into `local.properties` (gitignored):
+
+```
+RELEASE_STORE_PASSWORD=...
+RELEASE_KEY_ALIAS=release
+RELEASE_KEY_PASSWORD=...
+```
+
+Finally derive the SHA-256 fingerprint and add it to the
+`AndroidCertFingerprints` array in
+`apps/api/SearchAssistant.Api/Endpoints/WellKnownEndpoints.cs`:
+
+```
+keytool -list -v -keystore app/release.keystore -alias release | grep SHA256
+```
+
+Redeploy the API, then upload `app/build/outputs/bundle/release/app-release.aab`
+to Play Console → Internal testing → New release. The first time you
+upload, Play will issue an "upload key" certificate alongside your
+"app signing key"; both fingerprints need to appear in assetlinks.json
+for App Links to verify against either build.
+
+## Layout
+
 ## Layout
 
 Mirrors the iOS app's `Models / Services / Stores / Views` split with
