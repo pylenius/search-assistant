@@ -92,8 +92,9 @@ cat > "$SCENE_DELEGATE" <<'SWIFT_EOF'
 import UIKit
 import Capacitor
 
-private let capacitorOpenURL = Notification.Name(rawValue: "capacitorOpenURL")
-private let capacitorOpenUniversalLink = Notification.Name(rawValue: "capacitorOpenUniversalLink")
+// Use Capacitor's own typed Notification.Name extension. The rawValue
+// strings are "CapacitorOpenURLNotification" / "CapacitorOpenUniversalLinkNotification"
+// — easy to get wrong if hand-written, so always go through the extension.
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
@@ -148,7 +149,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             // `object["url"] as? NSURL` check inside makeUrlOpenObject.
             let payload: [String: Any?] = ["url": url as NSURL]
             NotificationCenter.default.post(
-                name: capacitorOpenUniversalLink,
+                name: Notification.Name.capacitorOpenUniversalLink,
                 object: payload
             )
         }
@@ -166,7 +167,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         NSLog("[SceneDelegate] posting capacitorOpenURL %@", url.absoluteString)
         let payload: [String: Any?] = ["url": url as NSURL, "options": [String: Any?]()]
         NotificationCenter.default.post(
-            name: capacitorOpenURL,
+            name: Notification.Name.capacitorOpenURL,
             object: payload
         )
     }
