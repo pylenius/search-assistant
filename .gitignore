@@ -25,6 +25,9 @@ obj/
 *.suo
 .vs/
 TestResults/
+# Some tools (Roslyn/dotnet-ef) write a literal-backslash 'bin\Debug' dir on macOS.
+bin\Debug/
+**/bin\Debug/
 
 # Docker / data
 .docker-data/
