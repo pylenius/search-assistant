@@ -1,0 +1,38 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Node / web
+node_modules/
+apps/web/dist/
+apps/web/.vite/
+apps/web/ios/
+apps/web/android/
+*.log
+.env
+.env.local
+.env.*.local
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+TestResults/
+
+# Docker / data
+.docker-data/
+postgres-data/
+
+# Local screenshots / scratch
+.tmp/
+
+# Caddy
+.caddy-data/
+.caddy-config/

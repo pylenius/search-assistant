@@ -1,0 +1,19 @@
+searchassistant.eport.fi {
+    # SignalR + REST → API
+    handle /api/* {
+        reverse_proxy api:8080
+    }
+    handle /hub/* {
+        reverse_proxy api:8080
+    }
+    # Universal Links AASA file is served by the API (otherwise the SPA
+    # catch-all returns index.html and Apple rejects it).
+    handle /.well-known/* {
+        reverse_proxy api:8080
+    }
+
+    # Everything else → SPA
+    handle {
+        reverse_proxy web:80
+    }
+}

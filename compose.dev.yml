@@ -1,0 +1,23 @@
+# Local development: only the database. API and web run on host for fast iteration.
+services:
+  db:
+    image: imresamu/postgis:16-3.4
+    platform: linux/arm64
+    container_name: search-assistant-db
+    environment:
+      POSTGRES_USER: search
+      POSTGRES_PASSWORD: search_dev
+      POSTGRES_DB: search_assistant
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U search -d search_assistant"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db-data:
