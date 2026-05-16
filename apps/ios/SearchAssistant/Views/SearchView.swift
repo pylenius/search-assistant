@@ -12,11 +12,23 @@ struct SearchView: View {
     @StateObject private var recorder = PathRecorder()
     @State private var hub: SignalRService?
 
+    @Environment(\.dismiss) private var dismiss
+
     @State private var loadError: String?
     @State private var didLoad: Bool = false
     @State private var needsJoin: Bool = false
     @State private var joining: Bool = false
     @State private var joinError: String?
+
+    // Draw mode (step 11).
+    @State private var drawing: Bool = false
+    @State private var draftPoints: [CLLocationCoordinate2D] = []
+    @State private var areaSheetShown: Bool = false
+    @State private var areaSaveError: String?
+
+    // Share / Manage (step 12).
+    @State private var shareSheetShown: Bool = false
+    @State private var manageSheetShown: Bool = false
 
     /// Client-side throttle so we don't spam the hub if the device emits faster.
     /// Server enforces its own ~700ms rate limit, this is just bandwidth manners.
@@ -28,6 +40,9 @@ struct SearchView: View {
             .navigationBarTitleDisplayMode(.inline)
             .task(id: slug) { await load() }
             .sheet(isPresented: $needsJoin) { joinSheet }
+            .sheet(isPresented: $areaSheetShown) { areaSheet }
+            .sheet(isPresented: $shareSheetShown) { shareSheet }
+            .sheet(isPresented: $manageSheetShown) { manageSheet }
             .onDisappear {
                 if recorder.isRecording { Task { await recorder.stop() } }
                 location.stop()
@@ -36,6 +51,10 @@ struct SearchView: View {
             .onChange(of: store.endedRemotely) { ended in
                 if ended { loadError = "The owner ended this search." }
             }
+    }
+
+    private var isOwner: Bool {
+        SessionStore.shared.ownerToken(for: slug) != nil
     }
 
     @ViewBuilder
@@ -58,7 +77,12 @@ struct SearchView: View {
                 positions: store.positions,
                 participants: store.participants,
                 areas: store.areas,
-                paths: store.paths
+                paths: store.paths,
+                drawing: drawing,
+                draftPoints: draftPoints,
+                onTapWhileDrawing: { coord in
+                    draftPoints.append(coord)
+                }
             )
             .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
 
@@ -68,6 +92,7 @@ struct SearchView: View {
         }
         .overlay(alignment: .topTrailing) {
             HStack(spacing: 8) {
+                drawButton
                 recordPathButton
                 shareLocationButton
             }
@@ -75,15 +100,18 @@ struct SearchView: View {
             .padding(.top, 8)
         }
         .overlay(alignment: .bottom) {
-            if let msg = recorder.error ?? location.lastError {
-                Text(msg)
-                    .font(.footnote)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(.regularMaterial, in: Capsule())
-                    .padding(.bottom, 20)
-                    .transition(.opacity)
+            VStack(spacing: 10) {
+                if let msg = recorder.error ?? location.lastError ?? areaSaveError {
+                    Text(msg)
+                        .font(.footnote)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(.regularMaterial, in: Capsule())
+                        .transition(.opacity)
+                }
+                if drawing { drawingToolbar }
             }
+            .padding(.bottom, 20)
         }
     }
 
@@ -138,13 +166,138 @@ struct SearchView: View {
         .presentationDetents([.medium, .large])
     }
 
+    private var areaSheet: some View {
+        AreaSheet(
+            defaultColor: store.me?.color ?? "#3b82f6",
+            onSave: { title, color in
+                await commitArea(title: title, color: color)
+            },
+            onCancel: {
+                areaSheetShown = false
+                // Discarding the draft on cancel matches the web flow.
+                draftPoints = []
+            }
+        )
+        .presentationDetents([.medium, .large])
+    }
+
+    private var shareSheet: some View {
+        ShareSheet(
+            slug: slug,
+            participantCount: store.participants.count,
+            onClose: { shareSheetShown = false }
+        )
+        .presentationDetents([.medium, .large])
+    }
+
+    @ViewBuilder
+    private var manageSheet: some View {
+        if let token = SessionStore.shared.ownerToken(for: slug) {
+            ManageView(
+                slug: slug,
+                ownerToken: token,
+                initialTitle: store.title,
+                initialExpiresAt: store.expiresAt,
+                onDeleted: {
+                    manageSheetShown = false
+                    dismiss()
+                },
+                onClose: { manageSheetShown = false }
+            )
+        }
+    }
+
+    private var drawButton: some View {
+        Button {
+            toggleDrawing()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: drawing
+                      ? "pencil.tip.crop.circle.fill"
+                      : "pencil.tip.crop.circle")
+                Text(drawing ? "Drawing" : "Draw")
+            }
+            .font(.caption.weight(.medium))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.regularMaterial, in: Capsule())
+            .foregroundStyle(drawing ? Color.orange : Color.primary)
+        }
+        .buttonStyle(.plain)
+        .disabled(store.me == nil)
+        .opacity(store.me == nil ? 0.5 : 1)
+    }
+
+    private var drawingToolbar: some View {
+        HStack(spacing: 10) {
+            Button(role: .cancel) {
+                cancelDrawing()
+            } label: {
+                Label("Cancel", systemImage: "xmark")
+                    .labelStyle(.titleAndIcon)
+            }
+            .buttonStyle(.bordered)
+
+            Button {
+                if !draftPoints.isEmpty { draftPoints.removeLast() }
+            } label: {
+                Label("Undo", systemImage: "arrow.uturn.backward")
+            }
+            .buttonStyle(.bordered)
+            .disabled(draftPoints.isEmpty)
+
+            Button {
+                areaSaveError = nil
+                areaSheetShown = true
+            } label: {
+                Label("Finish", systemImage: "checkmark")
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.orange)
+            .disabled(draftPoints.count < 3)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.regularMaterial, in: Capsule())
+    }
+
     // MARK: - Subviews
 
     private var titleBadge: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(store.title.isEmpty ? "Search" : store.title)
-                .font(.subheadline.weight(.semibold))
-                .lineLimit(1)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text(store.title.isEmpty ? "Search" : store.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                Button {
+                    shareSheetShown = true
+                } label: {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                        .labelStyle(.iconOnly)
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.accentColor.opacity(0.15), in: Capsule())
+                        .foregroundStyle(Color.accentColor)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Share")
+                if isOwner {
+                    Button {
+                        manageSheetShown = true
+                    } label: {
+                        Label("Manage", systemImage: "slider.horizontal.3")
+                            .labelStyle(.iconOnly)
+                            .font(.caption.weight(.semibold))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.secondary.opacity(0.15), in: Capsule())
+                            .foregroundStyle(.primary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Manage")
+                }
+            }
             HStack(spacing: 6) {
                 Text("/s/\(slug)")
                     .font(.caption2.monospaced())
@@ -308,6 +461,57 @@ struct SearchView: View {
 
         // Tee fixes into the path recorder; it's a no-op when not recording.
         recorder.append([fix.lng, fix.lat])
+    }
+
+    // MARK: - Drawing
+
+    private func toggleDrawing() {
+        if drawing {
+            cancelDrawing()
+        } else {
+            areaSaveError = nil
+            draftPoints = []
+            drawing = true
+        }
+    }
+
+    private func cancelDrawing() {
+        drawing = false
+        draftPoints = []
+        areaSheetShown = false
+        areaSaveError = nil
+    }
+
+    private func commitArea(title: String?, color: String) async {
+        guard draftPoints.count >= 3,
+              let token = store.me?.sessionToken else {
+            areaSaveError = "You need to be joined to add areas."
+            areaSheetShown = false
+            return
+        }
+        // GeoJSON ring is [lng, lat] and must close (first == last).
+        var ring: [[Double]] = draftPoints.map { [$0.longitude, $0.latitude] }
+        if let first = ring.first { ring.append(first) }
+        let geometry = PolygonGeometry(ring: ring)
+        do {
+            _ = try await ApiClient.shared.addArea(
+                slug: slug,
+                geometry: geometry,
+                title: title,
+                color: color,
+                sessionToken: token)
+            // Server broadcasts AreaAdded — store will reflect it.
+            areaSheetShown = false
+            drawing = false
+            draftPoints = []
+            areaSaveError = nil
+        } catch let ApiError.status(code, _) {
+            areaSaveError = "Couldn't save area (HTTP \(code))."
+            areaSheetShown = false
+        } catch {
+            areaSaveError = error.localizedDescription
+            areaSheetShown = false
+        }
     }
 
     // MARK: - Path recording
