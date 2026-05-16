@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useSearchStore } from '../stores/searchStore'
+
+const STALE_MS = 5 * 60 * 1000  // 5 min without an event → faded
 
 const store = useSearchStore()
 
-function relativeAge(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime()
+// Reactive "now" that ticks every 15s so age + stale flags refresh themselves.
+const now = ref(Date.now())
+let timer: ReturnType<typeof setInterval> | null = null
+onMounted(() => { timer = setInterval(() => { now.value = Date.now() }, 15000) })
+onBeforeUnmount(() => { if (timer) clearInterval(timer) })
+
+function relativeAge(iso: string, nowMs: number): string {
+  const ms = nowMs - new Date(iso).getTime()
   const s = Math.round(ms / 1000)
   if (s < 30) return 'now'
   if (s < 60) return `${s}s ago`
@@ -16,11 +24,15 @@ function relativeAge(iso: string): string {
 }
 
 const items = computed(() =>
-  store.participantList.map((p) => ({
-    ...p,
-    isMe: p.id === store.me?.id,
-    age: relativeAge(p.lastSeenAt),
-  })),
+  store.participantList.map((p) => {
+    const ageMs = now.value - new Date(p.lastSeenAt).getTime()
+    return {
+      ...p,
+      isMe: p.id === store.me?.id,
+      isStale: ageMs > STALE_MS,
+      age: relativeAge(p.lastSeenAt, now.value),
+    }
+  }),
 )
 </script>
 
@@ -31,9 +43,15 @@ const items = computed(() =>
       <p class="text-xs text-slate-500">{{ items.length }} joined</p>
     </header>
     <ul class="flex-1 overflow-auto divide-y divide-slate-100">
-      <li v-for="p in items" :key="p.id" class="flex items-center gap-3 px-4 py-2.5">
+      <li
+        v-for="p in items"
+        :key="p.id"
+        class="flex items-center gap-3 px-4 py-2.5 transition-opacity"
+        :class="p.isStale && !p.isMe ? 'opacity-50' : ''"
+      >
         <span
-          class="w-3 h-3 rounded-full shrink-0 ring-2 ring-white shadow"
+          class="w-3 h-3 rounded-full shrink-0 ring-2 shadow"
+          :class="p.isStale && !p.isMe ? 'ring-slate-200' : 'ring-white'"
           :style="{ backgroundColor: p.color }"
         ></span>
         <div class="min-w-0 flex-1">

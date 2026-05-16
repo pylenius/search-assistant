@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using NetTopologySuite.Geometries;
+using SearchAssistant.Api.Auth;
 using SearchAssistant.Api.Common;
 using SearchAssistant.Api.Contracts;
 using SearchAssistant.Domain.Entities;
@@ -21,8 +22,18 @@ public static class SearchEndpoints
         group.MapPost("/", CreateSearch);
         group.MapGet("/{slug}", GetSearch);
         group.MapPost("/{slug}/join", JoinSearch);
+        group.MapGet("/{slug}/me", GetMe).RequireParticipant();
 
         return app;
+    }
+
+    private static IResult GetMe(HttpContext http)
+    {
+        var p = http.GetParticipant();
+        // Position is not eagerly loaded by the filter; we return null here
+        // because /me is only used to populate the local "(you)" indicator.
+        return Results.Ok(new ParticipantDto(
+            p.Id, p.DisplayName, p.Color, p.JoinedAt, p.LastSeenAt, null));
     }
 
     private static async Task<IResult> CreateSearch(

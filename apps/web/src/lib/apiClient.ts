@@ -5,6 +5,7 @@ import type {
   CreateSearchResponse,
   JoinRequest,
   JoinResponse,
+  ParticipantDto,
   PathDto,
   SearchSnapshotDto,
 } from '../types/api'
@@ -51,6 +52,10 @@ export const api = {
     return request<JoinResponse>(`/api/searches/${encodeURIComponent(slug)}/join`, {
       method: 'POST', body: JSON.stringify(body),
     })
+  },
+  me(slug: string, sessionToken: string) {
+    return request<ParticipantDto>(`/api/searches/${encodeURIComponent(slug)}/me`,
+      {}, sessionToken)
   },
   addArea(slug: string, geometry: Polygon, sessionToken: string) {
     return request<AreaDto>(`/api/searches/${encodeURIComponent(slug)}/areas`, {

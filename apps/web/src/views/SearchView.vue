@@ -30,6 +30,13 @@ const drawError = ref<string | null>(null)
 const shareOpen = ref(false)
 const shareUrl = computed(() => `${window.location.origin}/s/${props.slug}`)
 const isOwner = computed(() => getOwnerToken(props.slug) !== null)
+const emptyStateDismissed = ref(false)
+const showEmptyState = computed(() =>
+  !emptyStateDismissed.value
+  && !needsJoin.value
+  && store.me !== null
+  && store.participantList.length <= 1,
+)
 const recording = ref(false)
 const recordingPathId = ref<string | null>(null)
 const recordError = ref<string | null>(null)
@@ -201,7 +208,21 @@ onMounted(async () => {
   const existing = getSessionToken(props.slug)
   if (existing) {
     const ok = await tryConnectWithToken(existing)
-    if (ok) return
+    if (ok) {
+      // Populate `me` so the "(you)" indicator and empty-state work.
+      try {
+        const meDto = await api.me(props.slug, existing)
+        store.me = {
+          id: meDto.id,
+          sessionToken: existing,
+          color: meDto.color,
+          displayName: meDto.displayName,
+        }
+      } catch (e) {
+        console.warn('api.me failed', e)
+      }
+      return
+    }
   }
   needsJoin.value = true
 })
@@ -290,6 +311,27 @@ onBeforeUnmount(() => {
         class="absolute top-16 right-3 max-w-xs rounded-md bg-amber-50 border border-amber-200 px-3 py-2 shadow text-xs text-amber-800"
       >
         {{ recordError || drawError || geo.error.value }}
+      </div>
+
+      <div
+        v-if="showEmptyState"
+        class="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center px-6"
+      >
+        <div class="pointer-events-auto max-w-md w-full rounded-lg bg-white shadow-xl border border-slate-200 px-5 py-4 flex items-center gap-4">
+          <div class="flex-1">
+            <p class="text-sm font-semibold text-slate-900">You're the only one here</p>
+            <p class="text-xs text-slate-500 mt-0.5">Share this link so your group can join the search.</p>
+          </div>
+          <button
+            class="rounded-md bg-emerald-600 text-white text-sm font-medium px-3 py-2 hover:bg-emerald-700 transition shrink-0"
+            @click="shareOpen = true"
+          >Share link</button>
+          <button
+            class="text-slate-400 hover:text-slate-600 text-lg leading-none"
+            aria-label="Dismiss"
+            @click="emptyStateDismissed = true"
+          >×</button>
+        </div>
       </div>
 
       <JoinDialog

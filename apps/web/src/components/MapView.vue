@@ -32,6 +32,8 @@ let mapLoaded = false
 const AREA_SOURCE = 'search-areas'
 const PATH_SOURCE = 'search-paths'
 
+const STALE_POSITION_MS = 5 * 60 * 1000
+
 function buildMarkerEl(color: string): HTMLDivElement {
   const el = document.createElement('div')
   el.className = 'sa-marker'
@@ -41,16 +43,19 @@ function buildMarkerEl(color: string): HTMLDivElement {
     'border:2px solid #fff',
     'box-shadow:0 1px 4px rgba(0,0,0,0.4)',
     'cursor:pointer',
+    'transition:opacity 200ms',
   ].join(';')
   return el
 }
 
 function syncMarkers() {
   if (!map) return
+  const now = Date.now()
   const seen = new Set<string>()
   for (const [id, p] of store.positions) {
     seen.add(id)
     const color = store.participants.get(id)?.color ?? '#888'
+    const isStale = now - new Date(p.recordedAt).getTime() > STALE_POSITION_MS
     let m = markers.get(id)
     if (!m) {
       m = new maplibregl.Marker({ element: buildMarkerEl(color), anchor: 'center' })
@@ -59,9 +64,10 @@ function syncMarkers() {
       markers.set(id, m)
     } else {
       m.setLngLat([p.lng, p.lat])
-      const el = m.getElement() as HTMLElement
-      if (el.style.background !== color) el.style.background = color
     }
+    const el = m.getElement() as HTMLElement
+    if (el.style.background !== color) el.style.background = color
+    el.style.opacity = isStale ? '0.4' : '1'
   }
   for (const id of [...markers.keys()]) {
     if (!seen.has(id)) {
