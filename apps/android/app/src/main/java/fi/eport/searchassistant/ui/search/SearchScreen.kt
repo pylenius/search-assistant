@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.SettingsApplications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,6 +48,7 @@ fun SearchScreen(
     slug: String,
     container: AppContainer,
     onBack: () -> Unit,
+    onManage: () -> Unit,
 ) {
     val viewModel: SearchViewModel = viewModel(
         key = slug,
@@ -72,6 +74,8 @@ fun SearchScreen(
     val draftPoints by viewModel.draftPoints.collectAsStateWithLifecycle()
     val areaSheetShown by viewModel.areaSheetShown.collectAsStateWithLifecycle()
     val areaSaveError by viewModel.areaSaveError.collectAsStateWithLifecycle()
+
+    var shareSheetShown by rememberSaveable { mutableStateOf(false) }
 
     // Feed fixes from the service into the VM. The flow keeps emitting
     // while the service runs; the LaunchedEffect ends when the screen
@@ -174,12 +178,12 @@ fun SearchScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { /* ShareSheet — step 12 */ }) {
+                    IconButton(onClick = { shareSheetShown = true }) {
                         Icon(Icons.Filled.IosShare, contentDescription = "Share")
                     }
                     val isOwner = container.sessionStore.ownerToken(slug) != null
                     if (isOwner) {
-                        IconButton(onClick = { /* Manage — step 12 */ }) {
+                        IconButton(onClick = onManage) {
                             Icon(Icons.Filled.SettingsApplications,
                                 contentDescription = "Manage")
                         }
@@ -311,6 +315,14 @@ fun SearchScreen(
                 defaultColor = state.me?.color ?: "#3b82f6",
                 onSave = { title, color -> viewModel.commitArea(title, color) },
                 onCancel = { viewModel.dismissAreaSheet() },
+            )
+        }
+
+        if (shareSheetShown) {
+            ShareSheet(
+                slug = slug,
+                participantCount = state.participants.size,
+                onClose = { shareSheetShown = false },
             )
         }
     }
