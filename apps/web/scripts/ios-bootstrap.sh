@@ -83,12 +83,17 @@ cat > "$ENT" <<PLIST_EOF
 PLIST_EOF
 plutil -lint "$ENT" >/dev/null
 
-# SceneDelegate.swift — handles the scene lifecycle and forwards Universal Links
-# + URL opens to Capacitor's ApplicationDelegateProxy so JS gets the events.
-# NSLog at every entry point so Universal Link issues are debuggable from Xcode.
+# SceneDelegate.swift — scene lifecycle + Universal Link / URL forwarding.
+# Under iOS 13+ scene lifecycle, Capacitor's swizzling on AppDelegate's
+# application(_:continue:) doesn't fire, so the SceneDelegate has to post
+# the NotificationCenter events AppPlugin listens to (capacitorOpenURL /
+# capacitorOpenUniversalLink) itself for the JS-side appUrlOpen event to fire.
 cat > "$SCENE_DELEGATE" <<'SWIFT_EOF'
 import UIKit
 import Capacitor
+
+private let capacitorOpenURL = Notification.Name(rawValue: "capacitorOpenURL")
+private let capacitorOpenUniversalLink = Notification.Name(rawValue: "capacitorOpenUniversalLink")
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
@@ -107,46 +112,58 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.makeKeyAndVisible()
 
         for activity in connectionOptions.userActivities {
-            NSLog("[SceneDelegate] launch activity type=%@ webpageURL=%@",
-                  activity.activityType,
-                  activity.webpageURL?.absoluteString ?? "nil")
-            _ = ApplicationDelegateProxy.shared.application(
-                UIApplication.shared,
-                continue: activity,
-                restorationHandler: { _ in }
-            )
+            handleUserActivity(activity, source: "launch")
         }
         for ctx in connectionOptions.urlContexts {
-            NSLog("[SceneDelegate] launch URL %@", ctx.url.absoluteString)
-            _ = ApplicationDelegateProxy.shared.application(
-                UIApplication.shared,
-                open: ctx.url,
-                options: [:]
-            )
+            handleOpenURL(ctx.url, source: "launch")
         }
     }
 
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
-        NSLog("[SceneDelegate] continue userActivity type=%@ webpageURL=%@",
-              userActivity.activityType,
-              userActivity.webpageURL?.absoluteString ?? "nil")
-        _ = ApplicationDelegateProxy.shared.application(
-            UIApplication.shared,
-            continue: userActivity,
-            restorationHandler: { _ in }
-        )
+        handleUserActivity(userActivity, source: "continue")
     }
 
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         NSLog("[SceneDelegate] openURLContexts count=%d", URLContexts.count)
         for ctx in URLContexts {
-            NSLog("[SceneDelegate] open URL %@", ctx.url.absoluteString)
-            _ = ApplicationDelegateProxy.shared.application(
-                UIApplication.shared,
-                open: ctx.url,
-                options: [:]
+            handleOpenURL(ctx.url, source: "openURLContexts")
+        }
+    }
+
+    private func handleUserActivity(_ activity: NSUserActivity, source: String) {
+        NSLog("[SceneDelegate] %@ activity type=%@ webpageURL=%@",
+              source, activity.activityType, activity.webpageURL?.absoluteString ?? "nil")
+
+        _ = ApplicationDelegateProxy.shared.application(
+            UIApplication.shared,
+            continue: activity,
+            restorationHandler: { _ in }
+        )
+
+        if activity.activityType == NSUserActivityTypeBrowsingWeb,
+           let url = activity.webpageURL {
+            NSLog("[SceneDelegate] posting capacitorOpenUniversalLink %@", url.absoluteString)
+            NotificationCenter.default.post(
+                name: capacitorOpenUniversalLink,
+                object: ["url": url]
             )
         }
+    }
+
+    private func handleOpenURL(_ url: URL, source: String) {
+        NSLog("[SceneDelegate] %@ URL %@", source, url.absoluteString)
+
+        _ = ApplicationDelegateProxy.shared.application(
+            UIApplication.shared,
+            open: url,
+            options: [:]
+        )
+
+        NSLog("[SceneDelegate] posting capacitorOpenURL %@", url.absoluteString)
+        NotificationCenter.default.post(
+            name: capacitorOpenURL,
+            object: ["url": url, "options": [:]] as [String: Any]
+        )
     }
 }
 SWIFT_EOF
