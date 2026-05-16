@@ -1,19 +1,18 @@
 import SwiftUI
 
 struct ContentView: View {
+    /// Navigation stack of slugs. Pushing a slug brings up SearchView.
+    @State private var path: [String] = []
+
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "map")
-                .font(.system(size: 64))
-                .foregroundStyle(.tint)
-            Text("Search Assistant")
-                .font(.largeTitle.weight(.semibold))
-            Text("Native iOS scaffold — build steps come next.")
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
+        NavigationStack(path: $path) {
+            LandingView { slug in
+                path.append(slug)
+            }
+            .navigationDestination(for: String.self) { slug in
+                SearchView(slug: slug)
+            }
         }
-        .padding()
     }
 }
 
