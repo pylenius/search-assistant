@@ -4,42 +4,56 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
+import fi.eport.searchassistant.ui.landing.LandingScreen
+import fi.eport.searchassistant.ui.search.SearchScreen
 import fi.eport.searchassistant.ui.theme.SearchAssistantTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val container = (application as SearchAssistantApp).container
         setContent {
             SearchAssistantTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { inner ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(inner),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text("Search Assistant — scaffold ready")
-                    }
-                }
+                AppNavHost(container)
             }
         }
     }
 }
 
-@Preview(showBackground = true)
 @Composable
-private fun ScaffoldPreview() {
-    SearchAssistantTheme {
-        Text("Search Assistant — scaffold ready")
+private fun AppNavHost(container: AppContainer) {
+    val navController = rememberNavController()
+    NavHost(navController = navController, startDestination = Routes.LANDING) {
+        composable(Routes.LANDING) {
+            LandingScreen(
+                apiClient = container.apiClient,
+                sessionStore = container.sessionStore,
+                recentSearchesStore = container.recentSearchesStore,
+                onOpen = { slug ->
+                    navController.navigate(Routes.searchFor(slug))
+                },
+            )
+        }
+        composable(
+            route = Routes.SEARCH_PATTERN,
+            arguments = listOf(navArgument(Routes.ARG_SLUG) { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val slug = backStackEntry.arguments?.getString(Routes.ARG_SLUG).orEmpty()
+            SearchScreen(slug = slug)
+        }
     }
+}
+
+object Routes {
+    const val LANDING = "landing"
+    const val ARG_SLUG = "slug"
+    const val SEARCH_PATTERN = "search/{$ARG_SLUG}"
+    fun searchFor(slug: String) = "search/$slug"
 }
