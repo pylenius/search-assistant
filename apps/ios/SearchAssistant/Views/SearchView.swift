@@ -20,6 +20,11 @@ struct SearchView: View {
     @State private var joining: Bool = false
     @State private var joinError: String?
 
+    /// Device's last-known location, captured on appearance for initial
+    /// map centering. Wins over the search's stored center because what
+    /// the user almost always wants to see first is themselves.
+    @State private var initialUserCenter: CLLocationCoordinate2D?
+
     // Draw mode (step 11).
     @State private var drawing: Bool = false
     @State private var draftPoints: [CLLocationCoordinate2D] = []
@@ -349,8 +354,11 @@ struct SearchView: View {
     }
 
     private var mapCenter: CLLocationCoordinate2D {
-        guard let p = store.center else { return fallbackCenter }
-        return CLLocationCoordinate2D(latitude: p.lat, longitude: p.lng)
+        if let me = initialUserCenter { return me }
+        if let p = store.center {
+            return CLLocationCoordinate2D(latitude: p.lat, longitude: p.lng)
+        }
+        return fallbackCenter
     }
 
     // MARK: - Loading + joining + hub
@@ -362,6 +370,12 @@ struct SearchView: View {
             let snap = try await ApiClient.shared.getSearch(slug: slug)
             store.hydrate(snap)
             didLoad = true
+            // Fire-and-forget one-shot location request to recenter the map.
+            // No-op if permission is denied; uses the cached fix if one is
+            // already on hand.
+            location.requestSingleFix { coord in
+                initialUserCenter = coord
+            }
             await resolveIdentityAndConnect()
         } catch let ApiError.status(404, _) {
             loadError = "This search doesn't exist. It may have expired."

@@ -27,6 +27,7 @@ final class LocationService: NSObject, ObservableObject {
 
     private let manager = CLLocationManager()
     private var onFix: ((GeoFix) -> Void)?
+    private var singleFixCompletion: ((CLLocationCoordinate2D) -> Void)?
 
     override init() {
         self.authorizationStatus = .notDetermined
@@ -68,6 +69,33 @@ final class LocationService: NSObject, ObservableObject {
         isWatching = false
         onFix = nil
     }
+
+    /// One-shot fix for initial map centering. Cheap: uses the cached
+    /// `manager.location` when one is available, otherwise requests a single
+    /// update. Requests when-in-use authorization if status is undetermined —
+    /// this is the lighter-weight prompt; the "always" upgrade only happens
+    /// when the user explicitly toggles Share Location.
+    /// `denied`/`restricted` is a no-op; the map will fall back to its other
+    /// centers.
+    func requestSingleFix(_ completion: @escaping (CLLocationCoordinate2D) -> Void) {
+        singleFixCompletion = completion
+        switch manager.authorizationStatus {
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+            // Resumes from locationManagerDidChangeAuthorization once granted.
+        case .authorizedAlways, .authorizedWhenInUse:
+            if let cached = manager.location {
+                singleFixCompletion = nil
+                completion(cached.coordinate)
+            } else {
+                manager.requestLocation()
+            }
+        case .denied, .restricted:
+            singleFixCompletion = nil
+        @unknown default:
+            singleFixCompletion = nil
+        }
+    }
 }
 
 extension LocationService: CLLocationManagerDelegate {
@@ -81,7 +109,14 @@ extension LocationService: CLLocationManagerDelegate {
             headingDegrees: loc.course >= 0 ? loc.course : nil,
             timestamp: loc.timestamp
         )
-        Task { @MainActor in self.onFix?(fix) }
+        let coord = loc.coordinate
+        Task { @MainActor in
+            self.onFix?(fix)
+            if let cb = self.singleFixCompletion {
+                self.singleFixCompletion = nil
+                cb(coord)
+            }
+        }
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager,
@@ -94,10 +129,15 @@ extension LocationService: CLLocationManagerDelegate {
         let status = manager.authorizationStatus
         Task { @MainActor in
             self.authorizationStatus = status
-            if (status == .authorizedAlways || status == .authorizedWhenInUse)
-                && self.isWatching {
-                // User granted permission while a start() was already in flight.
-                manager.startUpdatingLocation()
+            if status == .authorizedAlways || status == .authorizedWhenInUse {
+                if self.isWatching {
+                    // User granted permission while a start() was already in flight.
+                    manager.startUpdatingLocation()
+                }
+                if self.singleFixCompletion != nil {
+                    // requestSingleFix was waiting on authorization.
+                    manager.requestLocation()
+                }
             }
         }
     }
