@@ -1,0 +1,266 @@
+# AGENT.md
+
+Quick orientation for AI agents (and humans) working in this repo.
+
+## What this is
+
+Collaborative GPS + map search assistant. Casual group activities (mushroom
+picking, group hikes, geocaching). Anonymous, link-based access: tap a
+`https://searchassistant.eport.fi/s/{slug}` link, pick a display name, and
+you see the shared search area, walked paths, and live positions of
+everyone else in the same search. Built as a Vue web app + Capacitor iOS
+wrap; Android deferred.
+
+## Stack
+
+| Layer | Choice |
+|---|---|
+| Backend | .NET 10 ASP.NET Core minimal APIs |
+| ORM | EF Core 10 + Npgsql + NetTopologySuite |
+| Realtime | SignalR (one group per search) |
+| DB | Postgres 16 + PostGIS 3 (`imresamu/postgis:16-3.4`) |
+| Frontend | Vue 3 + Vite + TS + Pinia + Tailwind v4 |
+| Map | MapLibre GL JS + OpenStreetMap raster tiles + terra-draw |
+| Mobile | Capacitor 8 (iOS only for now) |
+| Hosting | Docker Compose on a single VM, behind nginx-proxy-manager |
+
+## Repo layout
+
+```
+apps/
+  api/                    .NET 10 solution
+    SearchAssistant.Api/          minimal-API + SignalR hub + hosted services
+    SearchAssistant.Domain/       entities (geography types from NetTopologySuite)
+    SearchAssistant.Infrastructure/ EF Core context + EntityTypeConfigurations + migrations
+    SearchAssistant.Api.Tests/    xunit (mostly placeholder for now)
+    Dockerfile                    multi-stage build
+  web/                    Vue + Vite SPA, also the Capacitor source
+    src/
+      views/                      LandingView, SearchView, ManageView
+      components/                 MapView, ParticipantList, AreasList, AreaDialog, ShareSheet, JoinDialog
+      stores/searchStore.ts       Pinia store, hub event handlers mutate it
+      lib/
+        apiClient.ts              fetch wrapper, attaches X-Session-Token / X-Owner-Token
+        searchHub.ts              @microsoft/signalr client + handler registration
+        useGeolocation.ts         routes to native BackgroundLocation in Capacitor, browser geo on web
+        backgroundLocation.ts     registerPlugin('BackgroundLocation') typed handle
+        universalLinks.ts         App.addListener('appUrlOpen') → router.replace
+        sessionStore.ts           localStorage tokens per slug
+        mapStyle.ts               OSM raster style
+    native/ios/                   source-of-truth Swift; bootstrap copies into ios/
+      BackgroundLocationPlugin.swift  custom Capacitor plugin wrapping CLLocationManager
+      MyViewController.swift          subclasses CAPBridgeViewController, registers plugins
+    scripts/ios-bootstrap.sh      idempotent iOS regen (see below)
+    Dockerfile                    node build + nginx serve; VITE_API_BASE is a --build-arg
+    nginx.conf                    SPA fallback + asset caching
+    capacitor.config.ts           appId fi.eport.searchassistant
+    .env.production               VITE_API_BASE=https://searchassistant.eport.fi (baked at build)
+infra/
+  Caddyfile                       reference; production uses nginx-proxy-manager instead
+  postgres/init.sql               CREATE EXTENSION postgis, uuid-ossp
+scripts/                          one-off .NET 10 file-based smoke tests
+  smoke-hub.cs                    hub fanout test
+  pump-positions.cs               simulated walker
+  add-area.cs / record-path.cs    direct REST exercise
+docker-compose.yml                production stack (uses pre-built registry images)
+compose.dev.yml                   dev: postgres only
+docker-publish.sh                 build + push both images to docker-repository.eport.fi
+```
+
+## Run locally
+
+```sh
+# Database
+docker compose -f compose.dev.yml up -d
+
+# API (port 5080)
+ASPNETCORE_ENVIRONMENT=Development \
+  dotnet run --project apps/api/SearchAssistant.Api \
+             --urls=http://localhost:5080
+
+# Web (port 5173)
+cd apps/web && npm install && npm run dev
+```
+
+Migrations apply automatically on API startup (`db.Database.Migrate()` in
+`Program.cs`). For a one-off manual run:
+`dotnet ef database update -p apps/api/SearchAssistant.Infrastructure -s apps/api/SearchAssistant.Api`.
+
+## iOS build
+
+`apps/web/ios/` is **regenerated on every bootstrap** and is `.gitignore`d.
+**All customizations must live in `apps/web/scripts/ios-bootstrap.sh`** or
+in `apps/web/native/ios/` (source files the script copies in).
+
+```sh
+cd apps/web
+./scripts/ios-bootstrap.sh       # idempotent
+open ios/App/App.xcodeproj       # Cmd+R to run on device
+```
+
+The script:
+- runs `npm install`, `npm run build`
+- runs `npx cap add ios` (or `cap sync ios` if folder exists)
+- copies `native/ios/*.swift` into `ios/App/CapApp-SPM/Sources/CapApp-SPM/`
+- patches `Main.storyboard` to use `MyViewController` instead of `CAPBridgeViewController`
+- writes `Info.plist` keys: `NSLocation*UsageDescription`, `UIBackgroundModes=[location]`, `UIApplicationSceneManifest`
+- writes `App.entitlements` with `applinks:searchassistant.eport.fi`
+- patches `project.pbxproj` (via Python): `DEVELOPMENT_TEAM=HEJK7U967E`, `CODE_SIGN_ENTITLEMENTS`, `OTHER_LDFLAGS=-ObjC`, adds `SceneDelegate.swift` to sources
+- registers `BackgroundLocationPlugin` in `capacitor.config.json` `packageClassList`
+
+## Deploy
+
+```sh
+# Build + push images (local):
+./docker-publish.sh
+# Override the API base URL baked into the SPA:
+VITE_API_BASE=https://example.com ./docker-publish.sh
+
+# Pull + restart (server: pekka@10.21.212.55):
+cd ~/docker/search-assistant
+sudo docker compose pull && sudo docker compose up -d
+```
+
+- Production stack: `~/docker/search-assistant/docker-compose.yml`
+- Domain: `https://searchassistant.eport.fi` → nginx-proxy-manager → host
+  port **48181** → an internal nginx `router` container that fans
+  `/api/*`, `/hub/*`, `/.well-known/*` to the API container and `/` to the
+  web container. Websockets Support must be ON in nginx-proxy-manager for
+  SignalR.
+- DB password is in `~/docker/search-assistant/.env` on the server.
+
+## Data model
+
+All geometry stored as PostGIS `geography(_, 4326)` with GIST indexes.
+
+```
+searches               id, slug (unique), title, createdAt, expiresAt,
+                       ownerToken, center::Point, defaultZoom
+participants           id, searchId, displayName, color, sessionToken
+                       (unique), joinedAt, lastSeenAt
+search_areas           id, searchId, createdByParticipantId, geometry::Polygon,
+                       title?, color?, createdAt
+paths                  id, searchId, participantId, geometry::LineString,
+                       startedAt, endedAt?
+positions              participantId (PK), location::Point, accuracyMeters,
+                       headingDegrees?, recordedAt
+position_history       id, participantId, location::Point, recordedAt
+                       (currently not written; reserved for path simplification work)
+```
+
+`positions` is an upsert-per-participant — "where they are now". `paths`
+is the historical walked track, simplified server-side with
+Douglas-Peucker (planar approximation on degrees — fine for casual use).
+
+## Auth model
+
+- **Session token** (`X-Session-Token`) — issued by `POST /join`,
+  identifies a participant. Required for writes that act *as a
+  participant* (areas, paths, positions, `GET /me`).
+- **Owner token** (`X-Owner-Token`) — issued by `POST /api/searches`,
+  required for manage operations (rename, expiry, delete search, clear
+  paths).
+- Both tokens live in `localStorage` keyed by slug
+  (`sa:session:{slug}`, `sa:owner:{slug}`).
+- Filters: `SessionAuth.RequireParticipant()` and `RequireOwner()` —
+  see `apps/api/SearchAssistant.Api/Auth/SessionAuth.cs`.
+
+## Realtime contract
+
+Hub at `/hub/search`. Client calls `JoinSearch(slug, sessionToken)` to
+join group `search-{searchId}`. Server-to-client events:
+
+```
+ParticipantJoined(ParticipantDto), ParticipantLeft(participantId)
+PositionUpdated(PositionUpdateDto)
+AreaAdded(AreaDto), AreaRemoved(areaId)
+PathStarted(PathDto), PathUpdated(PathDto), PathFinalized(pathId)
+SearchUpdated(SearchUpdatedDto), SearchEnded(slug)
+```
+
+Hub interface and DTOs in `apps/api/SearchAssistant.Api/Realtime/HubContracts.cs`.
+JS-side handlers wired in `searchHub.ts`; the SearchView's
+`attachHubHandlers()` maps them onto Pinia store mutations.
+
+Server-side `SearchHub.SendPosition` is rate-limited at ~700ms per
+participant (`Services/PositionRateLimiter.cs`) on top of the client's 1s throttle.
+
+## Known gotchas (live tripwires)
+
+These are the ones that have actually bitten this codebase. Detailed notes in
+`/Users/pekka/.claude/projects/-Users-pekka-Coding-search-assistant/memory/`.
+
+1. **Capacitor SPM plugins need explicit registration.** `packageClassList`
+   in `capacitor.config.json` alone does **not** work — Capacitor 6+
+   doesn't auto-register, and the `@objc` plugin classes in SPM static
+   libraries get linker-dead-stripped. Fix: `MyViewController` (in
+   `CapApp-SPM`) calls `bridge?.registerPluginInstance(...)` for every
+   plugin in `capacitorDidLoad()`. The class references force the linker
+   to keep the metadata. To add a new plugin: append a
+   `registerPluginInstance(NewPlugin())` line and re-bootstrap.
+
+2. **Scene lifecycle (iOS 13+) bypasses AppDelegate.** `application(_:continue:)`
+   and `application(_:open:)` are never called. `SceneDelegate.swift`
+   forwards each scene callback to
+   `ApplicationDelegateProxy.shared.application(...)`, which posts the
+   `Notification.Name.capacitorOpenUniversalLink` / `capacitorOpenURL`
+   notifications AppPlugin observes — but only if AppPlugin is actually
+   loaded (see #1).
+
+3. **MapLibre container can't be `absolute inset-0`.** MapLibre's `Map`
+   constructor forces `position: relative` on the container, which nukes
+   `inset: 0` → height collapses to 0. Use `<div class="relative h-full
+   w-full"><div ref="mapEl" class="h-full w-full" /></div>`.
+
+4. **`vite build` doesn't read `.env.development`.** Production builds
+   (including the iOS bundle and the Docker SPA) need `.env.production`
+   to override `VITE_API_BASE`. Without it, the bundle bakes in
+   `localhost:5080` from the `apiClient.ts` default.
+
+5. **CORS must allow `capacitor://localhost`.** The iOS WKWebView runs
+   at that origin and is cross-origin to `https://searchassistant.eport.fi`.
+   See `Program.cs` `AllowedOrigins`.
+
+6. **`bin\Debug` literal-backslash directory.** `dotnet ef` on macOS
+   occasionally writes a directory whose name is literally `bin\Debug`
+   (single token with a backslash). The `bin/` `.gitignore` rule doesn't
+   match it. After running EF tooling: `find apps/api -type d | grep '\\\\'`
+   to spot it, then `rm -rf 'apps/api/.../bin\Debug'` to delete (single
+   quotes — the shell otherwise eats the backslash).
+
+## Apple Developer info
+
+- Team ID: `HEJK7U967E`
+- Bundle ID: `fi.eport.searchassistant`
+- Associated domains: `applinks:searchassistant.eport.fi`
+- Capabilities (App ID portal): only Associated Domains is enabled.
+  Background Modes is set at the Xcode level (Info.plist
+  `UIBackgroundModes=[location]`) — there is no App ID toggle for that.
+
+## Useful one-liners
+
+```sh
+# Verify deploy from anywhere
+curl https://searchassistant.eport.fi/api/health
+curl https://searchassistant.eport.fi/.well-known/apple-app-site-association
+curl -X POST 'https://searchassistant.eport.fi/hub/search/negotiate?negotiateVersion=1'
+
+# Run a hub smoke test end-to-end (needs local API running)
+dotnet run scripts/smoke-hub.cs
+
+# Inspect what's in the iOS-bundled JS
+grep -hoE 'https?://[a-z.:0-9]+' apps/web/ios/App/App/public/assets/*.js | sort -u
+
+# Find leaked bin\Debug dirs
+find apps/api -type d | grep '\\\\'
+```
+
+## Project history & conventions
+
+- Plan: `/Users/pekka/.claude/plans/lets-plan-for-search-crystalline-flurry.md`
+  (the original 13-step build plan; mostly executed but read it before
+  any architectural change).
+- Test data: searches expire after 7 days by default; positions and
+  paths cascade-delete with the search.
+- All comments are minimal — code style favors no comments unless the
+  *why* is non-obvious.
