@@ -1,11 +1,11 @@
 package fi.eport.searchassistant
 
 import android.content.Context
+import fi.eport.searchassistant.data.api.ApiClient
 
 /// Service-locator-style DI container. Built once in
-/// [SearchAssistantApp.onCreate]; each subsystem (ApiClient, stores,
-/// SignalR, location) lazy-initialises here. Real wiring lands in
-/// step 2 (ApiClient) and step 3 (SessionStore / RecentSearchesStore).
+/// [SearchAssistantApp.onCreate]. Subsystems are exposed lazily so
+/// activity-scoped consumers only pay for what they touch.
 class AppContainer(private val context: Context) {
-    // Singletons land here as we wire each subsystem in subsequent steps.
+    val apiClient: ApiClient by lazy { ApiClient() }
 }
