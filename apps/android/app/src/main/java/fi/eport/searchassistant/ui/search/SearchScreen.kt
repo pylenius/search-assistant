@@ -110,6 +110,8 @@ fun SearchScreen(
             SearchMap(
                 initialCenter = state.center?.let { LatLng(it.lat, it.lng) },
                 initialZoom = state.defaultZoom,
+                positions = state.positions,
+                participants = state.participants,
                 modifier = Modifier.fillMaxSize(),
             )
             // Loading + error overlays respect the scaffold padding so
