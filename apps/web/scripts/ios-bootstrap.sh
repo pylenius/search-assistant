@@ -20,6 +20,9 @@ CAP_CFG_JSON="ios/App/App/capacitor.config.json"
 SPM_SRC_DIR="ios/App/CapApp-SPM/Sources/CapApp-SPM"
 BG_LOCATION_SRC="native/ios/BackgroundLocationPlugin.swift"
 BG_LOCATION_DST="$SPM_SRC_DIR/BackgroundLocationPlugin.swift"
+MY_VC_SRC="native/ios/MyViewController.swift"
+MY_VC_DST="$SPM_SRC_DIR/MyViewController.swift"
+MAIN_STORYBOARD="ios/App/App/Base.lproj/Main.storyboard"
 
 TEAM_ID="HEJK7U967E"
 ASSOCIATED_DOMAIN="applinks:searchassistant.eport.fi"
@@ -174,12 +177,27 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 }
 SWIFT_EOF
 
-echo "==> 5b/6 Installing BackgroundLocationPlugin into CapApp-SPM"
+echo "==> 5b/6 Installing native sources into CapApp-SPM"
 mkdir -p "$SPM_SRC_DIR"
 cp "$BG_LOCATION_SRC" "$BG_LOCATION_DST"
+cp "$MY_VC_SRC" "$MY_VC_DST"
 
-# Register the plugin so Capacitor instantiates it on startup. Stored in
-# capacitor.config.json (runtime) — Capacitor reads packageClassList here.
+# Patch Main.storyboard to instantiate MyViewController instead of the default
+# CAPBridgeViewController. MyViewController.capacitorDidLoad() explicitly calls
+# bridge.registerPluginInstance(...) for each plugin. This is the only reliable
+# way to register NPM Capacitor plugins under SPM in Capacitor 6+ — without it
+# the linker dead-strips the @objc plugin classes and NSClassFromString returns
+# nil, causing every JS call to return UNIMPLEMENTED.
+if grep -q 'customClass="CAPBridgeViewController"' "$MAIN_STORYBOARD"; then
+    /usr/bin/sed -i '' \
+        -e 's|customClass="CAPBridgeViewController" customModule="Capacitor"|customClass="MyViewController" customModule="CapApp_SPM"|' \
+        "$MAIN_STORYBOARD"
+    echo "    Main.storyboard now uses CapApp_SPM.MyViewController"
+fi
+
+# packageClassList is also kept for belt-and-suspenders: once MyViewController
+# is linked it forces the plugin classes to be retained, so NSClassFromString
+# lookups for these entries also start succeeding.
 python3 - <<PYEOF
 import json
 from pathlib import Path
@@ -273,6 +291,8 @@ plutil -extract NSLocationAlwaysAndWhenInUseUsageDescription raw -o - "$PLIST"
 echo "  UIBackgroundModes: $(plutil -extract UIBackgroundModes json -o - "$PLIST")"
 echo "  Scene manifest: $(plutil -extract UIApplicationSceneManifest.UISceneConfigurations.UIWindowSceneSessionRoleApplication.0.UISceneDelegateClassName raw -o - "$PLIST")"
 echo "  BackgroundLocationPlugin.swift: $(test -f "$BG_LOCATION_DST" && echo "present" || echo "MISSING")"
+echo "  MyViewController.swift: $(test -f "$MY_VC_DST" && echo "present" || echo "MISSING")"
+echo "  Storyboard class: $(grep -oE 'customClass="[A-Za-z]+"' "$MAIN_STORYBOARD" | head -1)"
 echo "  Entitlements:"
 plutil -p "$ENT" | sed 's/^/    /'
 echo "  DEVELOPMENT_TEAM lines in pbxproj: $(grep -c "DEVELOPMENT_TEAM = $TEAM_ID" "$PBXPROJ")"
