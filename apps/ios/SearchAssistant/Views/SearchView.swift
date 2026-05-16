@@ -9,6 +9,7 @@ struct SearchView: View {
 
     @StateObject private var store = SearchStore()
     @StateObject private var location = LocationService()
+    @StateObject private var recorder = PathRecorder()
     @State private var hub: SignalRService?
 
     @State private var loadError: String?
@@ -28,6 +29,7 @@ struct SearchView: View {
             .task(id: slug) { await load() }
             .sheet(isPresented: $needsJoin) { joinSheet }
             .onDisappear {
+                if recorder.isRecording { Task { await recorder.stop() } }
                 location.stop()
                 Task { await hub?.disconnect() }
             }
@@ -65,12 +67,15 @@ struct SearchView: View {
                 .padding(.top, 8)
         }
         .overlay(alignment: .topTrailing) {
-            shareLocationButton
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
+            HStack(spacing: 8) {
+                recordPathButton
+                shareLocationButton
+            }
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
         }
         .overlay(alignment: .bottom) {
-            if let msg = location.lastError {
+            if let msg = recorder.error ?? location.lastError {
                 Text(msg)
                     .font(.footnote)
                     .padding(.horizontal, 14)
@@ -80,6 +85,27 @@ struct SearchView: View {
                     .transition(.opacity)
             }
         }
+    }
+
+    private var recordPathButton: some View {
+        Button {
+            toggleRecording()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: recorder.isRecording
+                      ? "record.circle.fill"
+                      : "record.circle")
+                Text(recorder.isRecording ? "Recording" : "Record")
+            }
+            .font(.caption.weight(.medium))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.regularMaterial, in: Capsule())
+            .foregroundStyle(recorder.isRecording ? Color.red : Color.primary)
+        }
+        .buttonStyle(.plain)
+        .disabled(store.me == nil)
+        .opacity(store.me == nil ? 0.5 : 1)
     }
 
     private var shareLocationButton: some View {
@@ -271,12 +297,32 @@ struct SearchView: View {
         if now.timeIntervalSince(lastSentAt) < Self.minSendInterval { return }
         lastSentAt = now
 
-        guard let hub else { return }
-        Task {
-            await hub.sendPosition(lng: fix.lng,
-                                   lat: fix.lat,
-                                   accuracy: fix.accuracyMeters,
-                                   heading: fix.headingDegrees)
+        if let hub {
+            Task {
+                await hub.sendPosition(lng: fix.lng,
+                                       lat: fix.lat,
+                                       accuracy: fix.accuracyMeters,
+                                       heading: fix.headingDegrees)
+            }
+        }
+
+        // Tee fixes into the path recorder; it's a no-op when not recording.
+        recorder.append([fix.lng, fix.lat])
+    }
+
+    // MARK: - Path recording
+
+    private func toggleRecording() {
+        if recorder.isRecording {
+            Task { await recorder.stop() }
+        } else {
+            guard let me = store.me else { return }
+            recorder.configure(slug: slug, sessionToken: me.sessionToken)
+            // Auto-enable location sharing so the recorder gets fixes.
+            if !location.isWatching {
+                location.start { fix in handleFix(fix) }
+            }
+            recorder.start()
         }
     }
 }
