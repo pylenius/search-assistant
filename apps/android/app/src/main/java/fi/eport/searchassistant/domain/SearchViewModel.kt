@@ -3,11 +3,14 @@ package fi.eport.searchassistant.domain
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.google.android.gms.maps.model.LatLng
+import fi.eport.searchassistant.data.api.AddAreaRequest
 import fi.eport.searchassistant.data.api.ApiClient
 import fi.eport.searchassistant.data.api.AreaDto
 import fi.eport.searchassistant.data.api.JoinRequest
 import fi.eport.searchassistant.data.api.ParticipantDto
 import fi.eport.searchassistant.data.api.PathDto
+import fi.eport.searchassistant.data.api.PolygonGeometry
 import fi.eport.searchassistant.data.api.SearchSnapshotDto
 import fi.eport.searchassistant.data.api.StartPathRequest
 import fi.eport.searchassistant.data.api.UpdatePathRequest
@@ -238,6 +241,98 @@ class SearchViewModel(
                 }
             }
             recordingPathId = null
+        }
+    }
+
+    // MARK: - Drawing ---------------------------------------------
+
+    private val _drawing = MutableStateFlow(false)
+    val drawing: StateFlow<Boolean> = _drawing.asStateFlow()
+
+    private val _draftPoints = MutableStateFlow<List<LatLng>>(emptyList())
+    val draftPoints: StateFlow<List<LatLng>> = _draftPoints.asStateFlow()
+
+    private val _areaSaveError = MutableStateFlow<String?>(null)
+    val areaSaveError: StateFlow<String?> = _areaSaveError.asStateFlow()
+
+    private val _areaSheetShown = MutableStateFlow(false)
+    val areaSheetShown: StateFlow<Boolean> = _areaSheetShown.asStateFlow()
+
+    fun toggleDrawing() {
+        if (_drawing.value) {
+            cancelDrawing()
+        } else {
+            _areaSaveError.value = null
+            _draftPoints.value = emptyList()
+            _drawing.value = true
+        }
+    }
+
+    fun cancelDrawing() {
+        _drawing.value = false
+        _draftPoints.value = emptyList()
+        _areaSheetShown.value = false
+        _areaSaveError.value = null
+    }
+
+    fun appendDraftPoint(coord: LatLng) {
+        _draftPoints.value = _draftPoints.value + coord
+    }
+
+    fun undoLastDraftPoint() {
+        val current = _draftPoints.value
+        if (current.isNotEmpty()) _draftPoints.value = current.dropLast(1)
+    }
+
+    fun openAreaSheet() {
+        if (_draftPoints.value.size >= 3) {
+            _areaSaveError.value = null
+            _areaSheetShown.value = true
+        }
+    }
+
+    fun dismissAreaSheet() {
+        _areaSheetShown.value = false
+        _draftPoints.value = emptyList()
+        _drawing.value = false
+    }
+
+    fun commitArea(title: String?, colorHex: String) {
+        val pts = _draftPoints.value
+        if (pts.size < 3) {
+            _areaSaveError.value = "Need at least 3 points to make an area."
+            _areaSheetShown.value = false
+            return
+        }
+        val token = state.value.me?.sessionToken
+        if (token == null) {
+            _areaSaveError.value = "You need to be joined to add areas."
+            _areaSheetShown.value = false
+            return
+        }
+        // GeoJSON ring is [lng, lat] and must close (first == last).
+        val ring = pts.map { listOf(it.longitude, it.latitude) }.toMutableList()
+        ring.add(ring.first())
+        val geometry = PolygonGeometry.ofRing(ring)
+
+        viewModelScope.launch {
+            try {
+                apiClient.service.addArea(
+                    slug,
+                    AddAreaRequest(geometry = geometry, title = title, color = colorHex),
+                    token,
+                )
+                // Server broadcasts AreaAdded — store will reflect it.
+                _areaSheetShown.value = false
+                _drawing.value = false
+                _draftPoints.value = emptyList()
+                _areaSaveError.value = null
+            } catch (t: Throwable) {
+                _areaSaveError.value = t.httpStatus
+                    ?.let { "Couldn't save area (HTTP $it)." }
+                    ?: t.localizedMessage ?: "Network error."
+                _areaSheetShown.value = false
+            }
         }
     }
 

@@ -51,6 +51,9 @@ fun SearchMap(
     participants: Map<UUID, ParticipantDto>,
     areas: Map<UUID, AreaDto>,
     paths: Map<UUID, PathDto>,
+    drawing: Boolean = false,
+    draftPoints: List<LatLng> = emptyList(),
+    onTapWhileDrawing: ((LatLng) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val center = initialCenter ?: FallbackCenter
@@ -86,6 +89,9 @@ fun SearchMap(
             myLocationButtonEnabled = false,
             mapToolbarEnabled = false,
         ),
+        onMapClick = { coord ->
+            if (drawing) onTapWhileDrawing?.invoke(coord)
+        },
     ) {
         // Areas first so they sit under paths + markers.
         areas.values.forEach { area ->
@@ -121,6 +127,20 @@ fun SearchMap(
                 startCap = com.google.android.gms.maps.model.RoundCap(),
                 endCap = com.google.android.gms.maps.model.RoundCap(),
                 pattern = if (!finalized) listOf(Dash(24f), Gap(16f)) else null,
+            )
+        }
+
+        // Draft polyline while drawing — dashed orange, closes the
+        // loop visually once we have ≥3 points (matches iOS).
+        if (drawing && draftPoints.size >= 2) {
+            val draft = draftPoints.toMutableList().also {
+                if (it.size >= 3) it.add(it.first())
+            }
+            Polyline(
+                points = draft,
+                color = ComposeColor(0xFFEA580C),  // orange-600
+                width = 6f,
+                pattern = listOf(Dash(20f), Gap(14f)),
             )
         }
 

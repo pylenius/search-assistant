@@ -11,10 +11,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.IosShare
+import androidx.compose.material.icons.filled.Done
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material.icons.filled.SettingsApplications
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -64,6 +68,10 @@ fun SearchScreen(
     val locationError by locationController.lastError.collectAsStateWithLifecycle()
     val isRecording by viewModel.isRecording.collectAsStateWithLifecycle()
     val recordError by viewModel.recordError.collectAsStateWithLifecycle()
+    val drawing by viewModel.drawing.collectAsStateWithLifecycle()
+    val draftPoints by viewModel.draftPoints.collectAsStateWithLifecycle()
+    val areaSheetShown by viewModel.areaSheetShown.collectAsStateWithLifecycle()
+    val areaSaveError by viewModel.areaSaveError.collectAsStateWithLifecycle()
 
     // Feed fixes from the service into the VM. The flow keeps emitting
     // while the service runs; the LaunchedEffect ends when the screen
@@ -195,6 +203,9 @@ fun SearchScreen(
                 participants = state.participants,
                 areas = state.areas,
                 paths = state.paths,
+                drawing = drawing,
+                draftPoints = draftPoints,
+                onTapWhileDrawing = { viewModel.appendDraftPoint(it) },
                 modifier = Modifier.fillMaxSize(),
             )
             // Loading + error overlays respect the scaffold padding so
@@ -235,6 +246,11 @@ fun SearchScreen(
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                DrawChip(
+                    drawing = drawing,
+                    enabled = state.me != null,
+                    onToggle = { viewModel.toggleDrawing() },
+                )
                 RecordChip(
                     isRecording = isRecording,
                     enabled = state.me != null,
@@ -247,9 +263,21 @@ fun SearchScreen(
                 )
             }
 
+            if (drawing) {
+                DrawingToolbar(
+                    pointCount = draftPoints.size,
+                    onCancel = { viewModel.cancelDrawing() },
+                    onUndo = { viewModel.undoLastDraftPoint() },
+                    onFinish = { viewModel.openAreaSheet() },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 80.dp),
+                )
+            }
+
             // Bottom error toast for permission failures, path-flush
-            // errors, etc.
-            val bottomMsg = recordError ?: locationError
+            // errors, area-save errors, etc.
+            val bottomMsg = recordError ?: locationError ?: areaSaveError
             bottomMsg?.let { msg ->
                 Surface(
                     modifier = Modifier
@@ -276,6 +304,82 @@ fun SearchScreen(
                 onJoin = { viewModel.join(it) },
                 onCancel = { viewModel.cancelJoin() },
             )
+        }
+
+        if (areaSheetShown) {
+            AreaSheet(
+                defaultColor = state.me?.color ?: "#3b82f6",
+                onSave = { title, color -> viewModel.commitArea(title, color) },
+                onCancel = { viewModel.dismissAreaSheet() },
+            )
+        }
+    }
+}
+
+@Composable
+private fun DrawChip(
+    drawing: Boolean,
+    enabled: Boolean,
+    onToggle: () -> Unit,
+) {
+    AssistChip(
+        onClick = onToggle,
+        enabled = enabled,
+        label = { Text(if (drawing) "Drawing" else "Draw") },
+        leadingIcon = {
+            Icon(
+                if (drawing) Icons.Filled.EditNote else Icons.Filled.Edit,
+                contentDescription = null,
+            )
+        },
+        colors = if (drawing)
+            AssistChipDefaults.assistChipColors(
+                containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                labelColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                leadingIconContentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+            )
+        else AssistChipDefaults.assistChipColors(),
+    )
+}
+
+@Composable
+private fun DrawingToolbar(
+    pointCount: Int,
+    onCancel: () -> Unit,
+    onUndo: () -> Unit,
+    onFinish: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(28.dp),
+        tonalElevation = 6.dp,
+        shadowElevation = 6.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            TextButton(onClick = onCancel) {
+                Text("Cancel")
+            }
+            TextButton(
+                onClick = onUndo,
+                enabled = pointCount > 0,
+            ) {
+                Icon(Icons.Filled.Undo, contentDescription = null,
+                    modifier = Modifier.padding(end = 4.dp))
+                Text("Undo")
+            }
+            Button(
+                onClick = onFinish,
+                enabled = pointCount >= 3,
+            ) {
+                Icon(Icons.Filled.Done, contentDescription = null,
+                    modifier = Modifier.padding(end = 4.dp))
+                Text("Finish")
+            }
         }
     }
 }
