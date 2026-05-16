@@ -45,7 +45,9 @@ struct SearchView: View {
                 center: mapCenter,
                 zoom: store.defaultZoom,
                 positions: store.positions,
-                participants: store.participants
+                participants: store.participants,
+                areas: store.areas,
+                paths: store.paths
             )
             .ignoresSafeArea(edges: [.bottom, .leading, .trailing])
 
