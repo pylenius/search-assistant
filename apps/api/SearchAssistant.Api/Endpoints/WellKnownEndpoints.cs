@@ -5,6 +5,18 @@ public static class WellKnownEndpoints
     // Bundle ID prefixed with team ID. Apple expects "<TEAMID>.<bundleid>".
     private const string AppleAppId = "HEJK7U967E.fi.eport.searchassistant";
 
+    // Android app package id (matches the iOS bundle for cross-platform parity).
+    private const string AndroidPackageName = "fi.eport.searchassistant";
+
+    // SHA-256 fingerprints of every keystore that should be allowed to handle
+    // verified App Links to /s/*. First entry is the local debug keystore
+    // (~/.android/debug.keystore) so dev builds verify cleanly; subsequent
+    // entries get added once a release keystore is generated.
+    private static readonly string[] AndroidCertFingerprints =
+    {
+        "F0:EF:B2:BE:98:A5:23:AB:31:E3:14:FA:AA:33:0B:77:7C:72:F7:C3:1D:CE:3C:20:96:32:D9:35:44:2B:89:C4",
+    };
+
     public static IEndpointRouteBuilder MapWellKnownEndpoints(this IEndpointRouteBuilder app)
     {
         app.MapGet("/.well-known/apple-app-site-association", () =>
@@ -33,6 +45,28 @@ public static class WellKnownEndpoints
                 },
             };
             return Results.Json(payload, contentType: "application/json");
+        });
+
+        // Android App Links — verifies https://searchassistant.eport.fi/s/* so
+        // the OS opens the native app directly without an "open with" prompt.
+        // Built via Dictionary because "namespace" is a reserved C# keyword
+        // and anonymous-type property names can't be escaped.
+        app.MapGet("/.well-known/assetlinks.json", () =>
+        {
+            var doc = new[]
+            {
+                new Dictionary<string, object?>
+                {
+                    ["relation"] = new[] { "delegate_permission/common.handle_all_urls" },
+                    ["target"] = new Dictionary<string, object?>
+                    {
+                        ["namespace"] = "android_app",
+                        ["package_name"] = AndroidPackageName,
+                        ["sha256_cert_fingerprints"] = AndroidCertFingerprints,
+                    },
+                },
+            };
+            return Results.Json(doc, contentType: "application/json");
         });
 
         return app;
