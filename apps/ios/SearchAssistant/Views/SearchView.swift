@@ -8,6 +8,7 @@ struct SearchView: View {
     let slug: String
 
     @StateObject private var store = SearchStore()
+    @StateObject private var location = LocationService()
     @State private var hub: SignalRService?
 
     @State private var loadError: String?
@@ -16,12 +17,20 @@ struct SearchView: View {
     @State private var joining: Bool = false
     @State private var joinError: String?
 
+    /// Client-side throttle so we don't spam the hub if the device emits faster.
+    /// Server enforces its own ~700ms rate limit, this is just bandwidth manners.
+    @State private var lastSentAt: Date = .distantPast
+    private static let minSendInterval: TimeInterval = 1.0
+
     var body: some View {
         content
             .navigationBarTitleDisplayMode(.inline)
             .task(id: slug) { await load() }
             .sheet(isPresented: $needsJoin) { joinSheet }
-            .onDisappear { Task { await hub?.disconnect() } }
+            .onDisappear {
+                location.stop()
+                Task { await hub?.disconnect() }
+            }
             .onChange(of: store.endedRemotely) { ended in
                 if ended { loadError = "The owner ended this search." }
             }
@@ -55,6 +64,43 @@ struct SearchView: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
         }
+        .overlay(alignment: .topTrailing) {
+            shareLocationButton
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+        }
+        .overlay(alignment: .bottom) {
+            if let msg = location.lastError {
+                Text(msg)
+                    .font(.footnote)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.bottom, 20)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    private var shareLocationButton: some View {
+        Button {
+            toggleShareLocation()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: location.isWatching
+                      ? "location.fill"
+                      : "location")
+                Text(location.isWatching ? "Sharing" : "Share location")
+            }
+            .font(.caption.weight(.medium))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.regularMaterial, in: Capsule())
+            .foregroundStyle(location.isWatching ? Color.green : Color.primary)
+        }
+        .buttonStyle(.plain)
+        .disabled(store.me == nil)
+        .opacity(store.me == nil ? 0.5 : 1)
     }
 
     private var joinSheet: some View {
@@ -204,6 +250,33 @@ struct SearchView: View {
             try await service.connect(slug: slug, sessionToken: token, store: store)
         } catch {
             // Connection-state set to .failed inside the service.
+        }
+    }
+
+    // MARK: - Share location
+
+    private func toggleShareLocation() {
+        if location.isWatching {
+            location.stop()
+        } else {
+            location.start { fix in
+                handleFix(fix)
+            }
+        }
+    }
+
+    private func handleFix(_ fix: GeoFix) {
+        // Client-side 1/s throttle on top of the server's 700ms rate limit.
+        let now = Date()
+        if now.timeIntervalSince(lastSentAt) < Self.minSendInterval { return }
+        lastSentAt = now
+
+        guard let hub else { return }
+        Task {
+            await hub.sendPosition(lng: fix.lng,
+                                   lat: fix.lat,
+                                   accuracy: fix.accuracyMeters,
+                                   heading: fix.headingDegrees)
         }
     }
 }
