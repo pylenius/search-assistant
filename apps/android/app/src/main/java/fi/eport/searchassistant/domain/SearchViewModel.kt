@@ -244,6 +244,19 @@ class SearchViewModel(
         }
     }
 
+    // MARK: - Participant focus ------------------------------------
+
+    /// When set, the map animates to follow this participant's position.
+    /// Stays set across subsequent PositionUpdated events so the map
+    /// "follows" the focused participant; cleared by tapping another
+    /// or by tapping themselves with no position.
+    private val _focusedParticipantId = MutableStateFlow<UUID?>(null)
+    val focusedParticipantId: StateFlow<UUID?> = _focusedParticipantId.asStateFlow()
+
+    fun focusOnParticipant(id: UUID?) {
+        _focusedParticipantId.value = id
+    }
+
     // MARK: - Drawing ---------------------------------------------
 
     private val _drawing = MutableStateFlow(false)

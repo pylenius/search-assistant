@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
+import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.Dash
 import com.google.android.gms.maps.model.Gap
@@ -54,6 +55,11 @@ fun SearchMap(
     drawing: Boolean = false,
     draftPoints: List<LatLng> = emptyList(),
     onTapWhileDrawing: ((LatLng) -> Unit)? = null,
+    /// When non-null, the camera animates to this coordinate.
+    /// Recomputed only when the focus prop changes — incidental
+    /// recompositions (positions/areas ticks) don't fight with
+    /// user panning.
+    focusTarget: LatLng? = null,
     modifier: Modifier = Modifier,
 ) {
     val center = initialCenter ?: FallbackCenter
@@ -66,6 +72,17 @@ fun SearchMap(
             cameraPositionState.position =
                 CameraPosition.fromLatLngZoom(initialCenter, initialZoom.toFloat())
             seated = true
+        }
+    }
+    // Animate to a focus target when it changes. Keyed on the LatLng
+    // itself so re-snapping to a slightly-moved focused participant
+    // works (each new PositionUpdated produces a new LatLng instance).
+    LaunchedEffect(focusTarget) {
+        focusTarget?.let { target ->
+            cameraPositionState.animate(
+                CameraUpdateFactory.newLatLng(target),
+                durationMs = 600,
+            )
         }
     }
 

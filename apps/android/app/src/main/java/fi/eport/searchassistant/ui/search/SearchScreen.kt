@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.FiberManualRecord
 import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.LocationOn
@@ -76,6 +77,12 @@ fun SearchScreen(
     val areaSaveError by viewModel.areaSaveError.collectAsStateWithLifecycle()
 
     var shareSheetShown by rememberSaveable { mutableStateOf(false) }
+    var participantsSheetShown by rememberSaveable { mutableStateOf(false) }
+
+    val focusedParticipantId by viewModel.focusedParticipantId.collectAsStateWithLifecycle()
+    val focusTarget = focusedParticipantId?.let { id ->
+        state.positions[id]?.let { LatLng(it.lat, it.lng) }
+    }
 
     // Feed fixes from the service into the VM. The flow keeps emitting
     // while the service runs; the LaunchedEffect ends when the screen
@@ -210,6 +217,7 @@ fun SearchScreen(
                 drawing = drawing,
                 draftPoints = draftPoints,
                 onTapWhileDrawing = { viewModel.appendDraftPoint(it) },
+                focusTarget = focusTarget,
                 modifier = Modifier.fillMaxSize(),
             )
             // Loading + error overlays respect the scaffold padding so
@@ -279,6 +287,29 @@ fun SearchScreen(
                 )
             }
 
+            // Participants FAB (bottom-right). Mirrors the iOS pill.
+            FloatingActionButton(
+                onClick = { participantsSheetShown = true },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 16.dp, bottom = 24.dp),
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 14.dp),
+                ) {
+                    Icon(Icons.Filled.Groups, contentDescription = "Participants")
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "${state.participants.size}",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+
             // Bottom error toast for permission failures, path-flush
             // errors, area-save errors, etc.
             val bottomMsg = recordError ?: locationError ?: areaSaveError
@@ -323,6 +354,36 @@ fun SearchScreen(
                 slug = slug,
                 participantCount = state.participants.size,
                 onClose = { shareSheetShown = false },
+            )
+        }
+
+        if (participantsSheetShown) {
+            val now = remember { kotlinx.datetime.Clock.System.now() }
+            val staleAfter = 5L * 60  // seconds
+            val myId = state.me?.id
+            val rows = state.participants.values
+                .sortedWith(compareByDescending<fi.eport.searchassistant.data.api.ParticipantDto> {
+                    it.id == myId  // me first
+                }.thenByDescending { it.lastSeenAt })
+                .map { p ->
+                    ParticipantRow(
+                        id = p.id,
+                        displayName = p.displayName,
+                        color = p.color,
+                        lastSeenAt = p.lastSeenAt,
+                        hasPosition = state.positions[p.id] != null,
+                        isMe = p.id == myId,
+                        isStale = (now.toEpochMilliseconds() - p.lastSeenAt
+                            .toEpochMilliseconds()) / 1000 > staleAfter,
+                    )
+                }
+            ParticipantsSheet(
+                rows = rows,
+                onFocus = { id ->
+                    viewModel.focusOnParticipant(id)
+                    participantsSheetShown = false
+                },
+                onClose = { participantsSheetShown = false },
             )
         }
     }
