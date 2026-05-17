@@ -17,24 +17,17 @@ cd apps/api && dotnet run --project SearchAssistant.Api
 cd apps/web && npm install && npm run dev
 ```
 
-## iOS (Capacitor)
+## Mobile
 
-The `apps/web/ios/` folder is a regenerated build artifact and is **not** checked in.
-Every iOS customization lives in `apps/web/scripts/ios-bootstrap.sh`. Re-run anytime,
-including after `rm -rf apps/web/ios`:
-
-```sh
-cd apps/web
-./scripts/ios-bootstrap.sh
-open ios/App/App.xcworkspace   # then set signing + Product → Archive
-```
+Native apps live in `apps/ios/` (SwiftUI + MapKit) and `apps/android/`
+(Jetpack Compose + Google Maps). See `AGENT.md` for build details.
 
 ## Stack
 
 - Backend: .NET 10 + ASP.NET Core + EF Core + NetTopologySuite, SignalR for realtime
 - Database: Postgres 16 + PostGIS 3
 - Frontend: Vue 3 + Vite + TypeScript + MapLibre GL JS + Tailwind
-- Mobile: Capacitor (iOS first, Android later)
+- Mobile: native iOS (SwiftUI/MapKit) and Android (Compose/Google Maps)
 - Hosting: Docker Compose on a single VM, Caddy for TLS
 
 ## Publishing

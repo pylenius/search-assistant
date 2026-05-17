@@ -11,8 +11,6 @@ Thumbs.db
 node_modules/
 apps/web/dist/
 apps/web/.vite/
-apps/web/ios/
-apps/web/android/
 *.log
 .env
 .env.local

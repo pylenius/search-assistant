@@ -1,7 +1,6 @@
 # Search Assistant — native iOS app
 
-SwiftUI + MapKit. Replaces the Capacitor-wrapped Vue app at `apps/web/`
-on iOS only. Backend (`apps/api`) and web app are unchanged.
+SwiftUI + MapKit. Talks to the same backend (`apps/api`) as the web app.
 
 ## Generate the Xcode project
 
@@ -42,7 +41,3 @@ xcodebuild -project SearchAssistant.xcodeproj \
 - Team ID: `HEJK7U967E`
 - Bundle ID: `fi.eport.searchassistant`
 - Associated domain: `applinks:searchassistant.eport.fi`
-
-Same as the Capacitor build — they can't be installed on the same
-device simultaneously. Uninstall the Capacitor version before
-installing this one.

@@ -11,8 +11,7 @@ struct GeoFix {
 
 /// Native wrapper around CLLocationManager. Background updates are enabled
 /// (matches the UIBackgroundModes=[location] Info.plist key written by
-/// project.yml). Direct replacement for the BackgroundLocationPlugin we
-/// shipped through Capacitor.
+/// project.yml).
 ///
 /// Use:
 ///   @StateObject var location = LocationService()

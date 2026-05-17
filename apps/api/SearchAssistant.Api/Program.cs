@@ -12,16 +12,12 @@ public class Program
 {
     public const string AppCorsPolicy = "app";
 
-    // Browser SPA on the live domain is same-origin so doesn't need CORS,
-    // but the Capacitor iOS WKWebView runs at capacitor://localhost and
-    // makes cross-origin requests against the API. Plus the Vite dev server
-    // at :5173 during local development.
+    // Browser SPA on the live domain is same-origin so doesn't need CORS.
+    // Only the Vite dev server at :5173 needs an explicit allowance during
+    // local development. (Native iOS/Android apps don't go through CORS.)
     private static readonly string[] AllowedOrigins =
     [
         "http://localhost:5173",
-        "capacitor://localhost",
-        "https://localhost",
-        "ionic://localhost",
     ];
 
     public static void Main(string[] args)
