@@ -17,6 +17,8 @@ const emit = defineEmits<{
   polygonFinished: [Polygon]
 }>()
 
+defineExpose({ focusParticipant })
+
 const FALLBACK_CENTER: [number, number] = [24.94, 60.17]
 const FALLBACK_ZOOM = 12
 
@@ -173,6 +175,14 @@ function ensureDraw() {
     draw?.clear()
     draw?.setMode('select')
   })
+}
+
+function focusParticipant(participantId: string) {
+  if (!map) return
+  const pos = store.positions.get(participantId)
+  if (!pos) return
+  const targetZoom = Math.max(map.getZoom(), 15)
+  map.flyTo({ center: [pos.lng, pos.lat], zoom: targetZoom, duration: 700 })
 }
 
 function applyDrawingMode(isDrawing: boolean) {

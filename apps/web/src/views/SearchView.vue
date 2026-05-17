@@ -23,6 +23,12 @@ const props = defineProps<{ slug: string }>()
 const router = useRouter()
 const store = useSearchStore()
 
+const mapRef = ref<InstanceType<typeof MapView> | null>(null)
+
+function onFocusParticipant(participantId: string) {
+  mapRef.value?.focusParticipant(participantId)
+}
+
 const loadError = ref<string | null>(null)
 const needsJoin = ref(false)
 const joinError = ref<string | null>(null)
@@ -283,6 +289,7 @@ onBeforeUnmount(() => {
   <div v-else class="relative h-full w-full flex">
     <div class="relative flex-1">
       <MapView
+        ref="mapRef"
         :initial-center="store.center ?? undefined"
         :initial-zoom="store.defaultZoom"
         :drawing="drawing"
@@ -398,7 +405,7 @@ onBeforeUnmount(() => {
     </div>
 
     <aside class="hidden md:flex w-64 bg-white/95 backdrop-blur shadow-lg border-l border-slate-200 flex-col">
-      <ParticipantList />
+      <ParticipantList @focus="onFocusParticipant" />
       <AreasList @remove="onAreaRemove" />
     </aside>
   </div>

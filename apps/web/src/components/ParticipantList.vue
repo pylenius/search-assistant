@@ -6,6 +6,10 @@ const STALE_MS = 5 * 60 * 1000  // 5 min without an event → faded
 
 const store = useSearchStore()
 
+const emit = defineEmits<{
+  focus: [participantId: string]
+}>()
+
 // Reactive "now" that ticks every 15s so age + stale flags refresh themselves.
 const now = ref(Date.now())
 let timer: ReturnType<typeof setInterval> | null = null
@@ -30,6 +34,7 @@ const items = computed(() =>
       ...p,
       isMe: p.id === store.me?.id,
       isStale: ageMs > STALE_MS,
+      hasPosition: store.positions.has(p.id),
       age: relativeAge(p.lastSeenAt, now.value),
     }
   }),
@@ -46,20 +51,28 @@ const items = computed(() =>
       <li
         v-for="p in items"
         :key="p.id"
-        class="flex items-center gap-3 px-4 py-2.5 transition-opacity"
+        class="transition-opacity"
         :class="p.isStale && !p.isMe ? 'opacity-50' : ''"
       >
-        <span
-          class="w-3 h-3 rounded-full shrink-0 ring-2 shadow"
-          :class="p.isStale && !p.isMe ? 'ring-slate-200' : 'ring-white'"
-          :style="{ backgroundColor: p.color }"
-        ></span>
-        <div class="min-w-0 flex-1">
-          <p class="text-sm font-medium text-slate-900 truncate">
-            {{ p.displayName }}<span v-if="p.isMe" class="ml-1 text-xs text-slate-400">(you)</span>
-          </p>
-          <p class="text-xs text-slate-500">{{ p.age }}</p>
-        </div>
+        <button
+          type="button"
+          class="w-full flex items-center gap-3 px-4 py-2.5 text-left enabled:hover:bg-slate-50 enabled:active:bg-slate-100 disabled:cursor-default transition-colors"
+          :disabled="!p.hasPosition"
+          :title="p.hasPosition ? 'Center map on this person' : 'No location shared yet'"
+          @click="emit('focus', p.id)"
+        >
+          <span
+            class="w-3 h-3 rounded-full shrink-0 ring-2 shadow"
+            :class="p.isStale && !p.isMe ? 'ring-slate-200' : 'ring-white'"
+            :style="{ backgroundColor: p.color }"
+          ></span>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-medium text-slate-900 truncate">
+              {{ p.displayName }}<span v-if="p.isMe" class="ml-1 text-xs text-slate-400">(you)</span>
+            </p>
+            <p class="text-xs text-slate-500">{{ p.age }}</p>
+          </div>
+        </button>
       </li>
     </ul>
   </section>
