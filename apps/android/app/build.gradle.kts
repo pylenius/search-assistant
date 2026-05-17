@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     // AGP 9.x auto-applies kotlin-android when it detects a Kotlin source
@@ -7,6 +9,17 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.secrets.gradle)
 }
+
+// Read local.properties directly so the release signing config can pull
+// RELEASE_STORE_PASSWORD / RELEASE_KEY_PASSWORD / RELEASE_KEY_ALIAS out
+// of the gitignored file. The secrets-gradle-plugin only exposes values
+// into manifest placeholders + BuildConfig, not into Gradle properties.
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+fun localProp(name: String): String? =
+    localProperties.getProperty(name) ?: System.getenv(name)
 
 android {
     namespace = "fi.eport.searchassistant"
@@ -30,12 +43,14 @@ android {
     // `./gradlew bundleRelease` still produces an installable AAB.
     signingConfigs {
         val releaseKeystore = file("release.keystore")
-        if (releaseKeystore.exists()) {
+        val storePass = localProp("RELEASE_STORE_PASSWORD")
+        val keyPass = localProp("RELEASE_KEY_PASSWORD")
+        if (releaseKeystore.exists() && storePass != null && keyPass != null) {
             create("release") {
                 storeFile = releaseKeystore
-                storePassword = providers.gradleProperty("RELEASE_STORE_PASSWORD").orNull
-                keyAlias = providers.gradleProperty("RELEASE_KEY_ALIAS").orNull ?: "release"
-                keyPassword = providers.gradleProperty("RELEASE_KEY_PASSWORD").orNull
+                storePassword = storePass
+                keyAlias = localProp("RELEASE_KEY_ALIAS") ?: "release"
+                keyPassword = keyPass
             }
         }
     }
