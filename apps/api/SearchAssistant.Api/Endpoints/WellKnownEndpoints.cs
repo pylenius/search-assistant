@@ -5,8 +5,15 @@ public static class WellKnownEndpoints
     // Bundle ID prefixed with team ID. Apple expects "<TEAMID>.<bundleid>".
     private const string AppleAppId = "HEJK7U967E.fi.eport.searchassistant";
 
-    // Android app package id (matches the iOS bundle for cross-platform parity).
-    private const string AndroidPackageName = "fi.eport.searchassistant";
+    // Android app package ids that should verify against this domain.
+    // Two entries because the debug build appends ".debug" via
+    // applicationIdSuffix in app/build.gradle.kts — without explicitly
+    // listing it here, debug-build App Links would never verify.
+    private static readonly string[] AndroidPackageNames =
+    {
+        "fi.eport.searchassistant",
+        "fi.eport.searchassistant.debug",
+    };
 
     // SHA-256 fingerprints of every keystore that should be allowed to handle
     // verified App Links to /s/*. First entry is the local debug keystore
@@ -53,19 +60,17 @@ public static class WellKnownEndpoints
         // and anonymous-type property names can't be escaped.
         app.MapGet("/.well-known/assetlinks.json", () =>
         {
-            var doc = new[]
-            {
+            var doc = AndroidPackageNames.Select(pkg =>
                 new Dictionary<string, object?>
                 {
                     ["relation"] = new[] { "delegate_permission/common.handle_all_urls" },
                     ["target"] = new Dictionary<string, object?>
                     {
                         ["namespace"] = "android_app",
-                        ["package_name"] = AndroidPackageName,
+                        ["package_name"] = pkg,
                         ["sha256_cert_fingerprints"] = AndroidCertFingerprints,
                     },
-                },
-            };
+                }).ToArray();
             return Results.Json(doc, contentType: "application/json");
         });
 
