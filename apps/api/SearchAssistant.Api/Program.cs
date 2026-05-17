@@ -85,6 +85,7 @@ public class Program
         app.MapManageEndpoints();
         app.MapExportEndpoints();
         app.MapWellKnownEndpoints();
+        app.MapLegalEndpoints();
         app.MapHub<SearchHub>("/hub/search");
 
         app.Run();

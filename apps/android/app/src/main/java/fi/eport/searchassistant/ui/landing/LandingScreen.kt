@@ -118,8 +118,34 @@ fun LandingScreen(
                 }
             }
 
+            item {
+                PrivacyFooter()
+            }
+
             item { Spacer(Modifier.height(48.dp)) }
         }
+    }
+}
+
+@Composable
+private fun PrivacyFooter() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    TextButton(
+        onClick = {
+            context.startActivity(
+                android.content.Intent(
+                    android.content.Intent.ACTION_VIEW,
+                    android.net.Uri.parse("https://searchassistant.eport.fi/privacy"),
+                )
+            )
+        },
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            "Privacy policy",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

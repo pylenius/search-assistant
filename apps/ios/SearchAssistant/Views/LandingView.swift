@@ -62,6 +62,14 @@ struct LandingView: View {
                     }
                 }
             }
+
+            Section {
+                Link("Privacy policy",
+                     destination: URL(string: "https://searchassistant.eport.fi/privacy")!)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            .listRowBackground(Color.clear)
         }
         .listStyle(.insetGrouped)
         .navigationBarTitleDisplayMode(.inline)
