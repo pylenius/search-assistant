@@ -6,6 +6,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -288,10 +291,14 @@ fun SearchScreen(
             }
 
             // Participants FAB (bottom-right). Mirrors the iOS pill.
+            // navigationBars inset keeps it above the gesture / 3-button
+            // nav bar; the extra 24 dp lifts it off the bar so the Google
+            // attribution text stays readable above the system nav.
             FloatingActionButton(
                 onClick = { participantsSheetShown = true },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(end = 16.dp, bottom = 24.dp),
                 containerColor = MaterialTheme.colorScheme.surface,
                 contentColor = MaterialTheme.colorScheme.onSurface,
