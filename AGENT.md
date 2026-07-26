@@ -241,9 +241,9 @@ find apps/api -type d | grep '\\\\'
 
 ## Project history & conventions
 
-- Plan: `/Users/pekka/.claude/plans/lets-plan-for-search-crystalline-flurry.md`
-  (the original 13-step build plan; mostly executed but read it before
-  any architectural change).
+- The original 13-step build plan is gone (it lived outside the repo). The
+  design it described is summarised in `README.md` ("How it works") and in
+  the data model / realtime sections above — those are now the reference.
 - Test data: searches expire after 7 days by default; positions and
   paths cascade-delete with the search.
 - All comments are minimal — code style favors no comments unless the

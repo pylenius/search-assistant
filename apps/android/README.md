@@ -69,8 +69,6 @@ for App Links to verify against either build.
 
 ## Layout
 
-## Layout
-
 Mirrors the iOS app's `Models / Services / Stores / Views` split with
 Kotlin equivalents under `app/src/main/java/fi/eport/searchassistant/`:
 
