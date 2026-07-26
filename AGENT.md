@@ -124,18 +124,20 @@ open SearchAssistant.xcodeproj   # Cmd+R to run on device
 # Override the API base URL baked into the SPA:
 VITE_API_BASE=https://example.com ./docker-publish.sh
 
-# Pull + restart (server: pekka@10.21.212.55):
-cd ~/docker/search-assistant
-sudo docker compose pull && sudo docker compose up -d
+# Pull + restart (server: root@65.109.237.112 — "ogo1", also the registry host):
+cd /opt/search-assistant
+docker compose pull && docker compose up -d
 ```
 
-- Production stack: `~/docker/search-assistant/docker-compose.yml`
-- Domain: `https://searchassistant.eport.fi` → nginx-proxy-manager → host
-  port **48181** → an internal nginx `router` container that fans
-  `/api/*`, `/hub/*`, `/.well-known/*` to the API container and `/` to the
-  web container. Websockets Support must be ON in nginx-proxy-manager for
-  SignalR.
-- DB password is in `~/docker/search-assistant/.env` on the server.
+- Production stack: `/opt/search-assistant/docker-compose.yml`. Migrated
+  there 2026-06-14 with a fresh DB; it previously ran on
+  `pekka@10.21.212.55` behind nginx-proxy-manager on host port 48181, which
+  is no longer the deploy target.
+- Domain: `https://searchassistant.eport.fi` → **Traefik** (router labels on
+  the `router` service, `web` network, `le` cert resolver) → an internal
+  nginx `router` container that fans `/api/*`, `/hub/*`, `/.well-known/*` to
+  the API container and `/` to the web container.
+- DB password is in `/opt/search-assistant/.env` on the server.
 
 ## Data model
 
