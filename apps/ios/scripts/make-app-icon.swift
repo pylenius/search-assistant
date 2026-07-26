@@ -28,13 +28,16 @@ let size = 1024
 let bitsPerComponent = 8
 let bytesPerRow = size * 4
 
+// noneSkipLast, not premultipliedLast: the App Store rejects a marketing
+// icon that merely *has* an alpha channel (ITMS-90717), even one that is
+// fully opaque. The icon is full-bleed anyway, so nothing needs alpha.
 guard let ctx = CGContext(
     data: nil,
     width: size, height: size,
     bitsPerComponent: bitsPerComponent,
     bytesPerRow: bytesPerRow,
     space: CGColorSpaceCreateDeviceRGB(),
-    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
 ) else {
     fatalError("Failed to create CGContext")
 }
@@ -101,10 +104,19 @@ ctx.setShadow(offset: .zero, blur: 0)
 
 // MARK: - Write PNG
 
+// ImageIO rather than NSBitmapImageRep: the latter re-attaches an alpha
+// channel on encode, which is exactly what we're avoiding here.
 guard let cgImage = ctx.makeImage() else { fatalError("No image") }
-let rep = NSBitmapImageRep(cgImage: cgImage)
-guard let png = rep.representation(using: .png, properties: [:]) else {
+guard let dest = CGImageDestinationCreateWithURL(
+    outPath as CFURL, "public.png" as CFString, 1, nil
+) else {
+    fatalError("Failed to create PNG destination")
+}
+CGImageDestinationAddImage(dest, cgImage, [
+    kCGImagePropertyHasAlpha: false,
+] as CFDictionary)
+guard CGImageDestinationFinalize(dest) else {
     fatalError("PNG encode failed")
 }
-try png.write(to: outPath)
+let png = try Data(contentsOf: outPath)
 print("Wrote \(outPath.path) (\(png.count / 1024) KB)")
