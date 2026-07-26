@@ -171,7 +171,10 @@ Douglas-Peucker (planar approximation on degrees — fine for casual use).
   required for manage operations (rename, expiry, delete search, clear
   paths).
 - Both tokens live in `localStorage` keyed by slug
-  (`sa:session:{slug}`, `sa:owner:{slug}`).
+  (`sa:session:{slug}`, `sa:owner:{slug}`) on the web. The native apps use
+  **dots**, not colons — `sa.session.{slug}` / `sa.owner.{slug}` — in
+  `UserDefaults` / `SharedPreferences`. iOS and Android agree with each
+  other; only the web differs.
 - Filters: `SessionAuth.RequireParticipant()` and `RequireOwner()` —
   see `apps/api/SearchAssistant.Api/Auth/SessionAuth.cs`.
 

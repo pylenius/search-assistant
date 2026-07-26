@@ -6,8 +6,10 @@ import android.content.SharedPreferences
 /// Per-slug auth tokens. SharedPreferences is fine here — these are
 /// link-derived session secrets, not high-value credentials; the link-
 /// trust threat model is identical to the iOS UserDefaults storage.
-/// Keys mirror the iOS app and the web localStorage (`sa.session.{slug}`,
-/// `sa.owner.{slug}`) so the prefix is easy to grep for.
+/// Keys are `sa.session.{slug}` / `sa.owner.{slug}`, matching the iOS app.
+/// The web app uses the same prefix with colons (`sa:session:{slug}`) in
+/// localStorage — different storage, so the separator never has to agree,
+/// but don't assume it does when grepping.
 class SessionStore(context: Context) {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("session_store", Context.MODE_PRIVATE)

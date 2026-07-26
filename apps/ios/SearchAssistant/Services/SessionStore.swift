@@ -2,8 +2,10 @@ import Foundation
 
 /// Per-slug auth tokens. UserDefaults is fine here — these are link-derived
 /// session secrets, not high-value credentials; users are on the link-trust
-/// model anyway. Keys mirror the web app's localStorage (`sa:session:{slug}`,
-/// `sa:owner:{slug}`) so the prefix is easy to grep for if needed.
+/// model anyway. Keys are `sa.session.{slug}` / `sa.owner.{slug}`, matching
+/// the Android app. The web app uses the same prefix with colons
+/// (`sa:session:{slug}`) in localStorage — different storage, so the
+/// separator never has to agree, but don't assume it does when grepping.
 final class SessionStore {
     static let shared = SessionStore()
     private let defaults: UserDefaults
