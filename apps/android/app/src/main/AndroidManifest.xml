@@ -1,13 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <!-- No ACCESS_BACKGROUND_LOCATION on purpose. Recording keeps running
+         with the screen off via the location-typed foreground service
+         below, which only needs while-in-use permission because the
+         service is always started from a visible screen. Declaring the
+         background permission would force Google Play's background-
+         location review (video demo + justification) for a capability the
+         app never actually uses — nothing requests it at runtime. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- zxing-android-embedded ships a scanner Activity and declares CAMERA
+         plus camera hardware features. ShareSheet only uses BarcodeEncoder
+         to *draw* a QR code, so none of that is needed — and an unexplained
+         camera permission on a location app is exactly the kind of thing
+         that draws Play review questions. -->
+    <uses-permission android:name="android.permission.CAMERA" tools:node="remove" />
+    <uses-feature android:name="android.hardware.camera" tools:node="remove" />
+    <uses-feature android:name="android.hardware.camera.autofocus" tools:node="remove" />
+    <uses-feature android:name="android.hardware.camera.flash" tools:node="remove" />
+    <uses-feature android:name="android.hardware.camera.front" tools:node="remove" />
 
     <application
         android:name=".SearchAssistantApp"

@@ -134,6 +134,13 @@ A new signing key needs its SHA-256 fingerprint added to
 redeployed, or App Links stop verifying. Full walkthrough in
 [`apps/android/README.md`](apps/android/README.md).
 
+### Store submissions
+
+Listing copy, graphics and the per-store declarations are drafted in
+[`docs/app-store-ios.md`](docs/app-store-ios.md) and
+[`docs/play-store-android.md`](docs/play-store-android.md), with the assets
+under `docs/app-store/` and `docs/play-store/`.
+
 ## Stack
 
 - Backend: .NET 10 + ASP.NET Core minimal APIs + EF Core + NetTopologySuite, SignalR for realtime
