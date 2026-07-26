@@ -46,6 +46,13 @@ async function startSearch() {
 <template>
   <div class="min-h-full flex flex-col items-center justify-center bg-slate-50 px-6">
     <div class="max-w-md w-full text-center space-y-6">
+      <img
+        src="/app-icon.svg"
+        alt=""
+        class="mx-auto h-20 w-20 rounded-2xl shadow-sm"
+        width="80"
+        height="80"
+      />
       <h1 class="text-3xl font-semibold text-slate-900">Search Assistant</h1>
       <p class="text-slate-600">
         Share a search area and live positions with everyone you're searching with.

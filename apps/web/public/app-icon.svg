@@ -1,0 +1,23 @@
+<!--
+  Web app icon. Geometry mirrors the native launcher icons so all three
+  platforms show the same mark:
+    iOS     apps/ios/scripts/make-app-icon.swift
+    Android apps/android/app/src/main/res/drawable/ic_launcher_foreground.xml
+  Emerald gradient background (#22c55e → #10965c → #065f46) with a white
+  magnifying glass; the dot in the lens nods at "you are here".
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Search Assistant">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22c55e"/>
+      <stop offset="0.55" stop-color="#10965c"/>
+      <stop offset="1" stop-color="#065f46"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#bg)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="80" stroke-linecap="round">
+    <circle cx="440" cy="464" r="280"/>
+    <path d="M638 662 L822 846"/>
+  </g>
+  <circle cx="440" cy="464" r="56" fill="#ffffff"/>
+</svg>
