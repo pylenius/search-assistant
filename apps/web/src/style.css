@@ -6,3 +6,32 @@ html, body, #app {
   margin: 0;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
+
+/* Mobile Safari's `100%` resolves against the *large* viewport (toolbars
+   hidden), which pushes the bottom action bar under the browser chrome.
+   dvh tracks the visible area instead. */
+@supports (height: 100dvh) {
+  html, body, #app {
+    height: 100dvh;
+  }
+}
+
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* On phones the search view puts a full-width title card along the top edge
+   and an action bar along the bottom one; keep MapLibre's own controls clear
+   of both. Matches Tailwind's md breakpoint. */
+@media (max-width: 767px) {
+  .maplibregl-ctrl-top-right,
+  .maplibregl-ctrl-top-left {
+    top: 4.5rem;
+  }
+
+  .maplibregl-ctrl-bottom-right,
+  .maplibregl-ctrl-bottom-left {
+    bottom: 3.25rem;
+  }
+}

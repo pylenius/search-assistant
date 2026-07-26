@@ -38,7 +38,7 @@ function submit() {
         Title <span class="text-slate-400 font-normal">(optional)</span>
         <input
           v-model="title"
-          class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          class="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-base text-slate-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
           placeholder="e.g. North hillside"
           maxlength="80"
           autofocus

@@ -25,7 +25,11 @@ const store = useSearchStore()
 
 const mapRef = ref<InstanceType<typeof MapView> | null>(null)
 
+// Below md the sidebar is replaced by a bottom sheet holding the same lists.
+const panelOpen = ref(false)
+
 function onFocusParticipant(participantId: string) {
+  panelOpen.value = false
   mapRef.value?.focusParticipant(participantId)
 }
 
@@ -295,58 +299,67 @@ onBeforeUnmount(() => {
         :drawing="drawing"
         @polygon-finished="onPolygonFinished"
       />
-      <div class="absolute top-3 left-3 flex items-center gap-3 rounded-md bg-white/90 backdrop-blur px-3 py-2 shadow text-sm text-slate-700">
-        <div>
-          <div class="font-medium truncate max-w-[14rem]">{{ store.title || 'Search' }}</div>
+      <div class="absolute top-3 left-3 right-3 md:right-auto flex items-center gap-2 md:gap-3 rounded-md bg-white/90 backdrop-blur px-3 py-2 shadow text-sm text-slate-700">
+        <div class="min-w-0 flex-1 md:flex-none">
+          <div class="font-medium truncate md:max-w-[14rem]">{{ store.title || 'Search' }}</div>
           <div class="text-xs text-slate-500">
             {{ store.participantList.length }}
             {{ store.participantList.length === 1 ? 'person' : 'people' }}
           </div>
         </div>
         <button
-          class="rounded-md bg-emerald-600 text-white text-xs font-medium px-2.5 py-1.5 hover:bg-emerald-700 transition"
+          class="md:hidden shrink-0 rounded-md bg-slate-200 text-slate-700 text-xs font-medium px-2.5 py-1.5 hover:bg-slate-300 transition"
+          @click="panelOpen = true"
+        >People</button>
+        <button
+          class="shrink-0 rounded-md bg-emerald-600 text-white text-xs font-medium px-2.5 py-1.5 hover:bg-emerald-700 transition"
           @click="shareOpen = true"
         >Share</button>
         <router-link
           v-if="isOwner"
           :to="`/s/${slug}/manage`"
-          class="rounded-md bg-slate-200 text-slate-700 text-xs font-medium px-2.5 py-1.5 hover:bg-slate-300 transition"
+          class="shrink-0 rounded-md bg-slate-200 text-slate-700 text-xs font-medium px-2.5 py-1.5 hover:bg-slate-300 transition"
         >Manage</router-link>
       </div>
 
-      <div v-if="!needsJoin" class="absolute top-3 right-16 flex gap-2">
+      <!-- Bottom action bar on phones (the top-left card and the map's own
+           controls own the top edge there); top-right toolbar from md up. -->
+      <div
+        v-if="!needsJoin"
+        class="absolute inset-x-3 bottom-3 flex gap-2 md:inset-x-auto md:bottom-auto md:top-3 md:right-16"
+      >
         <button
-          class="rounded-md px-3 py-2 shadow text-sm font-medium transition"
+          class="flex-1 md:flex-none min-w-0 truncate rounded-md px-2 md:px-3 py-2 shadow text-xs md:text-sm font-medium transition"
           :class="drawing
             ? 'bg-indigo-600 text-white hover:bg-indigo-700'
             : 'bg-white/90 backdrop-blur text-slate-700 hover:bg-white'"
           @click="toggleDrawing"
         >
-          <span v-if="drawing">Drawing… click map ↵</span>
+          <span v-if="drawing">Drawing…<span class="hidden md:inline"> click map ↵</span></span>
           <span v-else>Draw area</span>
         </button>
         <button
-          class="rounded-md px-3 py-2 shadow text-sm font-medium transition"
+          class="flex-1 md:flex-none min-w-0 truncate rounded-md px-2 md:px-3 py-2 shadow text-xs md:text-sm font-medium transition"
           :class="recording
             ? 'bg-rose-600 text-white hover:bg-rose-700'
             : 'bg-white/90 backdrop-blur text-slate-700 hover:bg-white'"
           :disabled="!geo.supported"
           @click="toggleRecording"
         >
-          <span v-if="recording">Recording path ●</span>
+          <span v-if="recording">Recording<span class="hidden md:inline"> path</span> ●</span>
           <span v-else>Record path</span>
         </button>
         <button
-          class="rounded-md px-3 py-2 shadow text-sm font-medium transition"
+          class="flex-1 md:flex-none min-w-0 truncate rounded-md px-2 md:px-3 py-2 shadow text-xs md:text-sm font-medium transition"
           :class="geo.watching.value
             ? 'bg-emerald-600 text-white hover:bg-emerald-700'
             : 'bg-white/90 backdrop-blur text-slate-700 hover:bg-white'"
           :disabled="!geo.supported"
           @click="toggleShareLocation"
         >
-          <span v-if="geo.watching.value">Sharing location ●</span>
-          <span v-else-if="!geo.supported">Location unsupported</span>
-          <span v-else>Share my location</span>
+          <span v-if="geo.watching.value">Sharing<span class="hidden md:inline"> location</span> ●</span>
+          <span v-else-if="!geo.supported">Location<span class="hidden md:inline"> unsupported</span></span>
+          <span v-else><span class="hidden md:inline">Share my</span><span class="md:hidden">My</span> location</span>
         </button>
       </div>
 
@@ -359,7 +372,7 @@ onBeforeUnmount(() => {
 
       <div
         v-if="showEmptyState"
-        class="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center px-6"
+        class="pointer-events-none absolute inset-x-0 bottom-18 md:bottom-6 flex justify-center px-6"
       >
         <div class="pointer-events-auto max-w-md w-full rounded-lg bg-white shadow-xl border border-slate-200 px-5 py-4 flex items-center gap-4">
           <div class="flex-1">
@@ -402,6 +415,30 @@ onBeforeUnmount(() => {
         :count="store.participantList.length"
         @close="shareOpen = false"
       />
+
+      <!-- Phone-sized stand-in for the sidebar: same lists, in a sheet. -->
+      <div
+        v-if="panelOpen"
+        class="md:hidden absolute inset-0 z-20 bg-slate-900/30"
+        @click="panelOpen = false"
+      ></div>
+      <aside
+        v-if="panelOpen"
+        class="md:hidden absolute inset-x-0 bottom-0 z-30 flex flex-col max-h-[70%] rounded-t-2xl bg-white shadow-2xl"
+      >
+        <header class="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+          <h2 class="text-sm font-semibold text-slate-700">Who's here</h2>
+          <button
+            class="text-slate-400 hover:text-slate-600 text-xl leading-none"
+            aria-label="Close"
+            @click="panelOpen = false"
+          >×</button>
+        </header>
+        <div class="min-h-0 flex-1 overflow-y-auto">
+          <ParticipantList @focus="onFocusParticipant" />
+          <AreasList @remove="onAreaRemove" />
+        </div>
+      </aside>
     </div>
 
     <aside class="hidden md:flex w-64 bg-white/95 backdrop-blur shadow-lg border-l border-slate-200 flex-col">

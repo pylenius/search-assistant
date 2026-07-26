@@ -254,7 +254,7 @@ onBeforeUnmount(() => {
     <div ref="mapEl" class="h-full w-full"></div>
     <div
       v-if="locationStatus !== 'granted'"
-      class="absolute bottom-3 left-3 rounded-md bg-white/90 backdrop-blur px-3 py-2 shadow text-xs text-slate-700"
+      class="absolute bottom-14 md:bottom-3 left-3 rounded-md bg-white/90 backdrop-blur px-3 py-2 shadow text-xs text-slate-700"
     >
       <template v-if="locationStatus === 'pending'">Locating you…</template>
       <template v-else-if="locationStatus === 'denied'">Location denied — showing default area.</template>

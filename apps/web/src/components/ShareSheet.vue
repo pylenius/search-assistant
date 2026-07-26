@@ -66,7 +66,7 @@ async function copy() {
         <input
           readonly
           :value="url"
-          class="flex-1 min-w-0 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 font-mono"
+          class="flex-1 min-w-0 rounded-md border border-slate-300 px-3 py-2 text-base md:text-sm text-slate-900 font-mono"
           @focus="(($event.target as HTMLInputElement | null) ?? null)?.select()"
         />
         <button

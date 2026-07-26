@@ -39,7 +39,7 @@ const items = computed(() =>
           <p class="text-xs text-slate-500">by {{ a.authorName }}</p>
         </div>
         <button
-          class="text-slate-300 hover:text-rose-600 text-lg leading-none opacity-0 group-hover:opacity-100 transition"
+          class="text-slate-300 hover:text-rose-600 text-lg leading-none transition md:opacity-0 md:group-hover:opacity-100"
           :aria-label="`Remove ${a.title}`"
           @click="$emit('remove', a.id)"
         >×</button>
