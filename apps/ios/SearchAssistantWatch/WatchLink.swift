@@ -14,6 +14,27 @@ final class WatchLink: NSObject, ObservableObject {
     @Published private(set) var isReachable = false
     @Published var commandError: String?
 
+    /// When the last snapshot arrived, stamped on receipt rather than sent
+    /// in the payload — the two clocks don't need to agree, and only the
+    /// watch's own sense of "how long has it been quiet" matters here.
+    @Published private(set) var lastUpdate: Date?
+
+    /// Set only when a probe has actually failed. Silence alone never sets
+    /// it: a phone in a pocket with the app suspended is silent and is
+    /// perfectly fine, which is the whole point of the app.
+    @Published private(set) var phoneLost = false
+
+    /// How long the phone may be silent before we probe it. `WatchBridge`
+    /// resends even an unchanged search every 10s while it's running, so
+    /// this is several missed beats.
+    ///
+    /// Reachability is no use here: iOS can be woken on demand for
+    /// messages, so the watch may consider a suspended — or dead — app
+    /// "reachable" either way.
+    static let staleAfter: TimeInterval = 25
+
+    private var probing = false
+
     private let decoder = JSONDecoder()
 
     override init() {
@@ -46,6 +67,39 @@ final class WatchLink: NSObject, ObservableObject {
               let decoded = try? decoder.decode(WatchSnapshot.self, from: data)
         else { return }
         snapshot = decoded
+        lastUpdate = Date()
+        phoneLost = false
+    }
+
+    /// Called from the view's timer. Once the phone has been quiet for
+    /// `staleAfter`, ask it directly rather than assuming the worst —
+    /// WatchConnectivity relaunches a merely-suspended iOS app to answer,
+    /// so a reply means "pocketed, carry on" and a failure means "gone".
+    func pollIfQuiet(asOf now: Date) {
+        guard !probing else { return }
+        if let lastUpdate, now.timeIntervalSince(lastUpdate) <= Self.staleAfter {
+            return
+        }
+        probing = true
+        WCSession.default.sendMessage(
+            [WatchMessage.stateRequestKey: true],
+            replyHandler: { [weak self] reply in
+                Task { @MainActor in
+                    guard let self else { return }
+                    self.probing = false
+                    // apply() clears phoneLost and restamps lastUpdate. An
+                    // empty reply still counts as contact, so stamp anyway.
+                    self.apply(reply)
+                    self.lastUpdate = Date()
+                    self.phoneLost = false
+                }
+            },
+            errorHandler: { [weak self] _ in
+                Task { @MainActor in
+                    self?.probing = false
+                    self?.phoneLost = true
+                }
+            })
     }
 }
 

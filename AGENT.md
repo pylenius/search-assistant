@@ -275,8 +275,25 @@ These are the ones that have actually bitten this codebase. Detailed notes in
 
 9. **The watch app holds no connections.** It's a `WatchConnectivity`
    client of the phone: state arrives as a `WatchSnapshot` over
-   `updateApplicationContext` (latest-wins, survives the watch app being
-   asleep) and commands go back over `sendMessage` (needs reachability).
+   `sendMessage` when the watch is reachable, falling back to
+   `updateApplicationContext` when it isn't (latest-wins, survives the
+   watch app being asleep). Commands go back over `sendMessage`.
+
+   Two rules keep it honest, and both were learned the hard way:
+
+   - **Never record a send as delivered unless it succeeded.** `publish`
+     dedupes against the last payload, so recording a failed send makes the
+     dedupe suppress every retry and wedges the watch permanently on stale
+     state. `lastSent` is also dropped whenever reachability or watch state
+     changes — the moments a previously-impossible send becomes possible.
+   - **Never infer "the phone is gone" from silence.** A phone in a pocket
+     with the app suspended is silent, and that's the app's whole use case.
+     The watch instead *probes* after `WatchLink.staleAfter` of quiet:
+     WatchConnectivity relaunches a suspended iOS app in the background to
+     answer, so a reply means "pocketed, carry on" and only a failed reply
+     means gone. The phone also heartbeats every 10s from app level (not
+     from `SearchView`), so a relaunched app on the landing screen still
+     says "here, nothing open" instead of leaving the watch stuck.
    Distances and bearings are computed from the *phone's* position, carried
    in the snapshot, so the watch never asks for location permission. Adding
    its own GPS would mean an `HKWorkoutSession` to stay alive in the

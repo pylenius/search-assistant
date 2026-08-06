@@ -48,11 +48,27 @@ final class WatchBridge: NSObject {
     /// Last payload actually sent, used to skip no-op updates — `publish`
     /// runs on a timer and most ticks change nothing.
     private var lastSent: WatchSnapshot?
+    private var lastSentAt: Date = .distantPast
     private let encoder = JSONEncoder()
+
+    /// How long a *silent* search may go before we resend it unchanged.
+    ///
+    /// The watch decides the phone is gone when it stops hearing from it
+    /// (see `WatchLink.staleAfter`), and it can't distinguish "the app was
+    /// killed" from "nobody has moved in a while" — both look like silence.
+    /// So a search that isn't changing still has to say so periodically.
+    /// Must stay comfortably under the watch's threshold.
+    private static let heartbeat: TimeInterval = 10
 
     private var session: WCSession? {
         WCSession.isSupported() ? .default : nil
     }
+
+    /// Latest state handed to us, republished by the heartbeat. Empty when
+    /// no search is open, which is itself worth saying: it's how the watch
+    /// tells "the phone is here and idle" from "the phone is gone".
+    private var current = WatchSnapshot()
+    private var heartbeatTimer: Timer?
 
     /// Call once at launch. Safe to call again — activation is idempotent.
     func activate() {
@@ -61,14 +77,34 @@ final class WatchBridge: NSObject {
         if session.activationState != .activated {
             session.activate()
         }
+        startHeartbeat()
+    }
+
+    /// Runs for the life of the process, not just while a search is on
+    /// screen. The watch treats silence as "the phone app is gone", so the
+    /// phone has to keep saying "still here, nothing open" from the landing
+    /// screen too — otherwise relaunching the app would leave the watch
+    /// stuck on `Lost the iPhone` until a search happened to be opened.
+    private func startHeartbeat() {
+        guard heartbeatTimer == nil else { return }
+        let timer = Timer(timeInterval: Self.heartbeat, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.publish(self.current)
+            }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        heartbeatTimer = timer
     }
 
     func publish(_ snapshot: WatchSnapshot) {
+        current = snapshot
         guard let session, session.activationState == .activated else { return }
         // Nothing on the other end. Without this the calls below fail every
         // tick with WCErrorCodeWatchAppNotInstalled and fill the log.
         guard session.isWatchAppInstalled else { return }
-        guard snapshot != lastSent else { return }
+        let due = Date().timeIntervalSince(lastSentAt) >= Self.heartbeat
+        guard snapshot != lastSent || due else { return }
         guard let data = try? encoder.encode(snapshot) else { return }
 
         // `lastSent` is only ever recorded against a delivery that actually
@@ -88,6 +124,7 @@ final class WatchBridge: NSObject {
                     Task { @MainActor in self?.lastSent = nil }
                 })
             lastSent = snapshot
+            lastSentAt = Date()
             return
         }
 
@@ -96,6 +133,7 @@ final class WatchBridge: NSObject {
         do {
             try session.updateApplicationContext([WatchMessage.snapshotKey: data])
             lastSent = snapshot
+            lastSentAt = Date()
         } catch {
             lastSent = nil
         }
@@ -143,6 +181,25 @@ extension WatchBridge: WCSessionDelegate {
               let command = WatchCommand(rawValue: raw) else { return }
         Task { @MainActor in
             self.onCommand?(command)
+        }
+    }
+
+    /// The reply half of the probe. Reaching this at all is the answer the
+    /// watch wants — the app is alive, or WatchConnectivity just relaunched
+    /// it in the background, either of which means "not gone".
+    nonisolated func session(_ session: WCSession,
+                             didReceiveMessage message: [String: Any],
+                             replyHandler: @escaping ([String: Any]) -> Void) {
+        Task { @MainActor in
+            if let raw = message[WatchMessage.commandKey] as? String,
+               let command = WatchCommand(rawValue: raw) {
+                self.onCommand?(command)
+            }
+            guard let data = try? self.encoder.encode(self.current) else {
+                replyHandler([:])
+                return
+            }
+            replyHandler([WatchMessage.snapshotKey: data])
         }
     }
 }

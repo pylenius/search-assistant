@@ -51,6 +51,16 @@ enum WatchCommand: String, Codable {
 enum WatchMessage {
     static let commandKey = "command"
     static let snapshotKey = "snapshot"
+
+    /// Watch → phone: "are you there, and what's the state?"
+    ///
+    /// This exists because silence is ambiguous. A phone in a pocket with
+    /// the app suspended sends nothing, and so does a phone whose app the
+    /// user force-quit — but WatchConnectivity will relaunch a suspended
+    /// iOS app in the background to answer a message, and will *not*
+    /// relaunch a force-quit one. So the reply, or its absence, is the only
+    /// honest way to tell those two apart.
+    static let stateRequestKey = "requestState"
 }
 
 /// Great-circle helpers.
