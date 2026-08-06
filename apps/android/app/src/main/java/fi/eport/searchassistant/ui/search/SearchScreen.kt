@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.FiberManualRecord
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LocationOff
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.RadioButtonChecked
@@ -32,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -41,6 +44,7 @@ import com.google.android.gms.maps.model.LatLng
 import fi.eport.searchassistant.AppContainer
 import fi.eport.searchassistant.domain.ConnectionState
 import fi.eport.searchassistant.domain.LoadPhase
+import fi.eport.searchassistant.data.settings.Basemap
 import fi.eport.searchassistant.domain.SearchViewModel
 import fi.eport.searchassistant.location.LocationService
 import fi.eport.searchassistant.util.toComposeColor
@@ -81,6 +85,10 @@ fun SearchScreen(
 
     var shareSheetShown by rememberSaveable { mutableStateOf(false) }
     var participantsSheetShown by rememberSaveable { mutableStateOf(false) }
+
+    // Device-wide, so it's seeded from the store rather than saved with
+    // this screen's instance state.
+    var basemap by remember { mutableStateOf(container.basemapStore.get()) }
 
     val focusedParticipantId by viewModel.focusedParticipantId.collectAsStateWithLifecycle()
     val focusTarget = focusedParticipantId?.let { id ->
@@ -221,6 +229,8 @@ fun SearchScreen(
                 draftPoints = draftPoints,
                 onTapWhileDrawing = { viewModel.appendDraftPoint(it) },
                 focusTarget = focusTarget,
+                basemap = basemap,
+                osmTileProvider = container.osmTileProvider,
                 modifier = Modifier.fillMaxSize(),
             )
             // Loading + error overlays respect the scaffold padding so
@@ -276,6 +286,47 @@ fun SearchScreen(
                     enabled = state.me != null,
                     onToggle = { toggleShareLocation() },
                 )
+            }
+
+            // Basemap switcher bottom-left, mirroring the participants FAB
+            // on the right. The OSM attribution stacks under it and above
+            // Google's own logo, which owns the very bottom of this corner.
+            //
+            // That attribution is required by the tile usage policy the
+            // whole time OSM tiles are on screen, and it has to *stay* on
+            // screen — the policy explicitly rules out hiding it behind a
+            // toggle or under other UI.
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(start = 16.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                BasemapButton(
+                    basemap = basemap,
+                    onSelect = {
+                        basemap = it
+                        container.basemapStore.set(it)
+                    },
+                )
+                if (basemap == Basemap.OSM) {
+                    val uriHandler = LocalUriHandler.current
+                    Surface(
+                        modifier = Modifier.clickable {
+                            uriHandler.openUri("https://www.openstreetmap.org/copyright")
+                        },
+                        shape = RoundedCornerShape(4.dp),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.75f),
+                    ) {
+                        Text(
+                            "© OpenStreetMap",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
 
             if (drawing) {
@@ -420,6 +471,53 @@ private fun DrawChip(
             )
         else AssistChipDefaults.assistChipColors(),
     )
+}
+
+/// Basemap switcher. Sits under the action chips rather than in the
+/// toolbar because it's a map control, and because a fourth chip would
+/// overflow the row on small phones.
+@Composable
+private fun BasemapButton(
+    basemap: Basemap,
+    onSelect: (Basemap) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Surface(
+            onClick = { expanded = true },
+            shape = CircleShape,
+            tonalElevation = 3.dp,
+            shadowElevation = 3.dp,
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Icon(
+                Icons.Filled.Layers,
+                contentDescription = "Map style — " + basemapLabel(basemap),
+                modifier = Modifier.padding(10.dp),
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            Basemap.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(basemapLabel(option)) },
+                    onClick = {
+                        onSelect(option)
+                        expanded = false
+                    },
+                    trailingIcon = {
+                        if (option == basemap) {
+                            Icon(Icons.Filled.Done, contentDescription = null)
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
+private fun basemapLabel(basemap: Basemap) = when (basemap) {
+    Basemap.GOOGLE -> "Google Maps"
+    Basemap.OSM -> "OpenStreetMap"
 }
 
 @Composable

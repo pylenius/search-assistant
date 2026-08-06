@@ -234,6 +234,30 @@ These are the ones that have actually bitten this codebase. Detailed notes in
    to draw a QR code. They're stripped with `tools:node="remove"`. Verify with
    `aapt2 dump permissions app/build/outputs/apk/release/app-release.apk`.
 
+6. **Basemap overlays sit in a shared z-space on both native clients.**
+   The OpenStreetMap basemap option is a tile overlay drawn under the areas
+   and paths, and both SDKs will happily hide those shapes if the ordering
+   is off — it looks like the data failed to load, not like a paint bug.
+   - **iOS:** the tile overlay *and* every shape must be at
+     `.aboveLabels` (`SearchMapView.shapeLevel`), tiles inserted at index 0.
+     `addOverlay(_:)` defaults to `.aboveRoads`, and a whole level renders
+     above a whole level, so mixing the two hides one or the other. Tiles
+     at `.aboveRoads` also leave Apple's street labels painted on top of
+     OSM's — `canReplaceMapContent` only suppresses the basemap *below*
+     the overlay.
+   - **Android:** tile overlays, polygons and polylines share one z-index
+     space and their order at equal z is arbitrary, so the `TileOverlay`
+     needs an explicit `zIndex = -1f`. Markers are always on top regardless.
+
+7. **OSM tiles come with obligations.** `tile.openstreetmap.org` blocks
+   generic library User-Agents "without notice", which is why neither client
+   uses the SDK's built-in tile loader — `OSMTileOverlay.loadTile` and
+   `OsmTileProvider.getTile` issue the request themselves with a UA naming
+   the app. The "© OpenStreetMap" attribution must stay visible the whole
+   time the tiles are on screen (not behind a toggle), and pre-seeding or
+   any "download this area for offline" feature is prohibited — ordinary
+   response caching, which is what both clients do, is fine.
+
 ## Store submissions
 
 Listing copy, assets and per-store declarations live in

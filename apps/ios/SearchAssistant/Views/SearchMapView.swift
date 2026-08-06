@@ -16,6 +16,7 @@ struct SearchMapView: UIViewRepresentable {
     var drawing: Bool = false
     var draftPoints: [CLLocationCoordinate2D] = []
     var onTapWhileDrawing: ((CLLocationCoordinate2D) -> Void)? = nil
+    var basemap: Basemap = .apple
 
     /// How long without an update before a marker fades.
     static let staleAfter: TimeInterval = 5 * 60
@@ -47,6 +48,7 @@ struct SearchMapView: UIViewRepresentable {
     func updateUIView(_ map: MKMapView, context: Context) {
         context.coordinator.onTapWhileDrawing = onTapWhileDrawing
         context.coordinator.tapRecognizer?.isEnabled = drawing
+        applyBasemap(map: map)
         recenterIfNeeded(map: map, coord: context.coordinator)
         diffParticipantAnnotations(map: map)
         diffAreas(map: map)
@@ -55,6 +57,42 @@ struct SearchMapView: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
+
+    // MARK: - Basemap
+
+    /// Adds or removes the OSM tile overlay to match the `basemap` prop.
+    ///
+    /// Level and index both matter, and both were got wrong once:
+    ///
+    /// - The tiles must be at `.aboveLabels`. `canReplaceMapContent` only
+    ///   suppresses Apple's basemap *underneath* the overlay, so tiles at
+    ///   `.aboveRoads` come out with Apple's street labels still painted
+    ///   on top of OSM's own — every name drawn twice.
+    /// - Everything else must therefore be at `.aboveLabels` too (see
+    ///   `Self.shapeLevel`), because a whole level renders above a whole
+    ///   level: shapes left at the `addOverlay(_:)` default of
+    ///   `.aboveRoads` disappear entirely under the tiles.
+    ///
+    /// Index 0 is what keeps the tiles under the shapes within that
+    /// shared level — MapKit draws in insertion order, and the `diff*`
+    /// methods always append after this has run.
+    private func applyBasemap(map: MKMapView) {
+        let existing = map.overlays.compactMap { $0 as? MKTileOverlay }
+        switch basemap {
+        case .apple:
+            if !existing.isEmpty { map.removeOverlays(existing) }
+        case .osm:
+            if existing.isEmpty {
+                map.insertOverlay(OSMTileOverlay(), at: 0, level: Self.shapeLevel)
+            }
+        }
+    }
+
+    /// The one level every overlay lives in. Areas, paths and the draft
+    /// line sit here so they stay above the OSM tiles; on Apple's basemap
+    /// it also means they draw over street labels rather than under them,
+    /// which is what you want from a search area anyway.
+    private static let shapeLevel: MKOverlayLevel = .aboveLabels
 
     // MARK: - Recenter
 
@@ -136,7 +174,8 @@ struct SearchMapView: UIViewRepresentable {
                 }
                 map.removeOverlay(prev)
             }
-            map.addOverlay(OverlayShapes.areaPolygon(from: area, color: color))
+            map.addOverlay(OverlayShapes.areaPolygon(from: area, color: color),
+                           level: Self.shapeLevel)
         }
 
         let toRemove = existing.filter { !desiredIds.contains($0.key) }.map { $0.value }
@@ -165,7 +204,8 @@ struct SearchMapView: UIViewRepresentable {
                 }
                 map.removeOverlay(prev)
             }
-            map.addOverlay(OverlayShapes.pathPolyline(from: path, color: color))
+            map.addOverlay(OverlayShapes.pathPolyline(from: path, color: color),
+                           level: Self.shapeLevel)
         }
 
         let toRemove = existing.filter { !desiredIds.contains($0.key) }.map { $0.value }
@@ -185,7 +225,7 @@ struct SearchMapView: UIViewRepresentable {
             coords.append(first)
         }
         let line = DraftPolyline(coordinates: &coords, count: coords.count)
-        map.addOverlay(line)
+        map.addOverlay(line, level: Self.shapeLevel)
     }
 
     // MARK: - Region helper
@@ -235,6 +275,9 @@ struct SearchMapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: any MKOverlay) -> MKOverlayRenderer {
+            if let tiles = overlay as? MKTileOverlay {
+                return MKTileOverlayRenderer(tileOverlay: tiles)
+            }
             if let area = overlay as? AreaPolygon {
                 let r = MKPolygonRenderer(polygon: area)
                 r.fillColor = area.color.withAlphaComponent(0.18)

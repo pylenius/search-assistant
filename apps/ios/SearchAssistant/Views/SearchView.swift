@@ -31,6 +31,11 @@ struct SearchView: View {
     @State private var areaSheetShown: Bool = false
     @State private var areaSaveError: String?
 
+    /// Basemap choice, remembered device-wide rather than per search —
+    /// which basemap reads best is a property of the user and the
+    /// terrain, not of any one search.
+    @AppStorage("sa.basemap") private var basemap: Basemap = .apple
+
     // Share / Manage (step 12).
     @State private var shareSheetShown: Bool = false
     @State private var manageSheetShown: Bool = false
@@ -124,7 +129,8 @@ struct SearchView: View {
                 draftPoints: draftPoints,
                 onTapWhileDrawing: { coord in
                     draftPoints.append(coord)
-                }
+                },
+                basemap: basemap
             )
             // Edge to edge — the nav bar background is hidden in body,
             // so the map shows through behind the toolbar / status bar.
@@ -139,6 +145,17 @@ struct SearchView: View {
             }
             .padding(.horizontal, 12)
             .padding(.top, 8)
+        }
+        // Bottom-left, mirroring the participants pill on the right. The
+        // attribution stacks under the button and above MapKit's own
+        // "Legal" link, which owns the very bottom of this corner.
+        .overlay(alignment: .bottomLeading) {
+            VStack(alignment: .leading, spacing: 8) {
+                basemapButton
+                if basemap == .osm { osmAttribution }
+            }
+            .padding(.leading, 16)
+            .padding(.bottom, 24)
         }
         .overlay(alignment: .bottom) {
             VStack(spacing: 10) {
@@ -158,6 +175,38 @@ struct SearchView: View {
             participantsButton
                 .padding(.trailing, 16)
                 .padding(.bottom, 24)
+        }
+    }
+
+    private var basemapButton: some View {
+        Menu {
+            Picker("Basemap", selection: $basemap) {
+                ForEach(Basemap.allCases) { option in
+                    Text(option.label).tag(option)
+                }
+            }
+        } label: {
+            Image(systemName: "map")
+                .font(.system(size: 15, weight: .medium))
+                .frame(width: 36, height: 36)
+                .background(.regularMaterial, in: Circle())
+                .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Map style — \(basemap.label)")
+    }
+
+    /// Required by the OSM tile usage policy whenever their tiles are on
+    /// screen, and it has to *stay* on screen: the policy explicitly
+    /// rules out hiding attribution behind a toggle or under other UI.
+    private var osmAttribution: some View {
+        Link(destination: URL(string: "https://www.openstreetmap.org/copyright")!) {
+            Text("© OpenStreetMap")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 4))
         }
     }
 

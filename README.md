@@ -76,7 +76,10 @@ on port 5173 — that is the only origin the API's dev CORS policy allows.
 
 `apps/ios/` (SwiftUI + MapKit) and `apps/android/` (Jetpack Compose + Google
 Maps) are standalone clients of the same REST + SignalR API, and they open
-`/s/{slug}` links directly via universal links / app links. Both point at
+`/s/{slug}` links directly via universal links / app links. Both offer
+OpenStreetMap as an alternative basemap (the button at the bottom-left of the
+map), which draws the forest tracks and footpaths Apple and Google leave out
+— the ground a search actually covers. The choice is remembered per device. Both point at
 production by default — for local work against `localhost:5080`, change
 `apps/ios/SearchAssistant/Services/Config.swift` or
 `apps/android/app/src/main/java/fi/eport/searchassistant/AppConfig.kt`.

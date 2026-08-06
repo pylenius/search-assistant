@@ -15,6 +15,7 @@ import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.Dash
 import com.google.android.gms.maps.model.Gap
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.TileProvider
 import com.google.maps.android.compose.CameraPositionState
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.MapProperties
@@ -24,11 +25,13 @@ import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.Polygon
 import com.google.maps.android.compose.Polyline
+import com.google.maps.android.compose.TileOverlay
 import com.google.maps.android.compose.rememberCameraPositionState
 import fi.eport.searchassistant.data.api.AreaDto
 import fi.eport.searchassistant.data.api.ParticipantDto
 import fi.eport.searchassistant.data.api.PathDto
 import fi.eport.searchassistant.data.api.PositionUpdateDto
+import fi.eport.searchassistant.data.settings.Basemap
 import fi.eport.searchassistant.util.toComposeColor
 import kotlinx.coroutines.delay
 import kotlinx.datetime.Clock
@@ -60,8 +63,13 @@ fun SearchMap(
     /// recompositions (positions/areas ticks) don't fight with
     /// user panning.
     focusTarget: LatLng? = null,
+    basemap: Basemap = Basemap.GOOGLE,
+    /// Only read when [basemap] is OSM. Owned by `AppContainer` because
+    /// it carries a disk cache that must be a process singleton.
+    osmTileProvider: TileProvider? = null,
     modifier: Modifier = Modifier,
 ) {
+    val osm = basemap == Basemap.OSM && osmTileProvider != null
     val center = initialCenter ?: FallbackCenter
     val cameraPositionState: CameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(center, initialZoom.toFloat())
@@ -97,7 +105,10 @@ fun SearchMap(
         modifier = modifier.fillMaxSize(),
         cameraPositionState = cameraPositionState,
         properties = MapProperties(
-            mapType = MapType.NORMAL,
+            // NONE stops Google's basemap rendering underneath the OSM
+            // tiles — otherwise we pay to draw two maps and Google's
+            // shows through wherever a tile is still loading.
+            mapType = if (osm) MapType.NONE else MapType.NORMAL,
             isMyLocationEnabled = false,
         ),
         uiSettings = MapUiSettings(
@@ -110,6 +121,14 @@ fun SearchMap(
             if (drawing) onTapWhileDrawing?.invoke(coord)
         },
     ) {
+        // Tile overlays, polygons and polylines all share one z-index
+        // space with an arbitrary order at equal z, so the basemap needs
+        // an explicit negative index to stay underneath the shapes.
+        // (Markers are always drawn on top regardless.)
+        if (osm) {
+            TileOverlay(tileProvider = osmTileProvider!!, zIndex = -1f)
+        }
+
         // Areas first so they sit under paths + markers.
         areas.values.forEach { area ->
             val outer = area.geometry.coordinates.firstOrNull() ?: return@forEach
