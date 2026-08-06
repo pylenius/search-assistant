@@ -96,12 +96,24 @@ cd apps/ios && xcodegen
 open SearchAssistant.xcodeproj # then pick a simulator and ⌘R
 ```
 
-Headless build check (no signing needed):
+Headless build check (no signing needed). Use `-destination`, not `-sdk` —
+`-sdk` is applied to every target, which would build the watch app against
+the iOS SDK:
 
 ```sh
 xcodebuild -project apps/ios/SearchAssistant.xcodeproj -scheme SearchAssistant \
-           -sdk iphonesimulator -configuration Debug CODE_SIGNING_ALLOWED=NO build
+           -destination 'platform=iOS Simulator,name=iPhone 17' \
+           -configuration Debug CODE_SIGNING_ALLOWED=NO build
 ```
+
+#### Apple Watch
+
+`apps/ios/SearchAssistantWatch/` is a companion app, embedded in the iOS
+app and built by the same scheme. The phone keeps every network connection;
+the watch shows who's where — distance and compass point from the phone on
+your hip — and starts or stops recording without taking the phone out. It
+talks to the phone over WatchConnectivity and asks for no permissions of
+its own. The payload both sides share lives in `apps/ios/Shared/`.
 
 Signing uses team `HEJK7U967E` / bundle ID `fi.eport.searchassistant`, with
 `applinks:searchassistant.eport.fi` as the associated domain. The launcher

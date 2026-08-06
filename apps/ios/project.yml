@@ -37,6 +37,9 @@ targets:
         buildPhase:
           resources
         type: folder
+      # Compiled into both apps. Foundation-only, so it needs no framework
+      # target — see Shared/WatchPayloads.swift.
+      - path: Shared
     resources:
       - SearchAssistant/Resources/Assets.xcassets
     info:
@@ -74,3 +77,31 @@ targets:
     dependencies:
       - package: SignalRClient
         product: SignalRClient
+      - target: SearchAssistantWatch
+        embed: true
+        copy:
+          destination: wrapper
+          subpath: Watch
+
+  SearchAssistantWatch:
+    type: application
+    platform: watchOS
+    deploymentTarget: "10.0"
+    sources:
+      - path: SearchAssistantWatch
+      - path: Shared
+    info:
+      path: SearchAssistantWatch/Info.plist
+      properties:
+        CFBundleDisplayName: Search Assistant
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: fi.eport.searchassistant
+        # The watch app is a display and a remote control for the phone —
+        # it holds no connections of its own, so running without the phone
+        # would only ever show stale data.
+        WKRunsIndependentlyOfCompanionApp: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: fi.eport.searchassistant.watchkitapp
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "4"

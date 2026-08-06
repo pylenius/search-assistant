@@ -48,6 +48,11 @@ struct SearchView: View {
     /// positions arrive.
     @State private var focusedParticipantId: UUID?
 
+    /// Our own most recent fix. The hub echo can't be relied on for this —
+    /// it only arrives while sharing is on — and the watch needs an origin
+    /// to measure distances from.
+    @State private var lastFix: GeoFix?
+
     /// Client-side throttle so we don't spam the hub if the device emits faster.
     /// Server enforces its own ~700ms rate limit, this is just bandwidth manners.
     @State private var lastSentAt: Date = .distantPast
@@ -62,10 +67,32 @@ struct SearchView: View {
             .sheet(isPresented: $shareSheetShown) { shareSheet }
             .sheet(isPresented: $manageSheetShown) { manageSheet }
             .sheet(isPresented: $participantsSheetShown) { participantsSheet }
+            .onAppear {
+                WatchBridge.shared.onCommand = { command in
+                    // Same functions the on-screen chips call, so the watch
+                    // can't drift into a second code path.
+                    switch command {
+                    case .toggleRecording: toggleRecording()
+                    case .toggleSharing:   toggleShareLocation()
+                    }
+                }
+            }
+            // Push state to the watch on a slow tick rather than on every
+            // @Published change: positions arrive ~1/s per participant, and
+            // WatchBridge skips sends where nothing actually changed anyway.
+            .task(id: didLoad) {
+                guard didLoad else { return }
+                while !Task.isCancelled {
+                    WatchBridge.shared.publish(watchSnapshot)
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                }
+            }
             .onDisappear {
                 if recorder.isRecording { Task { await recorder.stop() } }
                 location.stop()
                 Task { await hub?.disconnect() }
+                WatchBridge.shared.onCommand = nil
+                WatchBridge.shared.clear()
             }
             .onChange(of: store.endedRemotely) { ended in
                 if ended { loadError = "The owner ended this search." }
@@ -481,6 +508,41 @@ struct SearchView: View {
         return fallbackCenter
     }
 
+    // MARK: - Watch
+
+    /// Flattens the live stores into the one payload the watch understands.
+    private var watchSnapshot: WatchSnapshot {
+        let myId = store.me?.id
+        let people = store.participantList.map { p in
+            let pos = store.positions[p.id]
+            return WatchPerson(
+                id: p.id,
+                name: p.displayName,
+                colorHex: p.color,
+                isMe: p.id == myId,
+                lat: pos?.lat,
+                lng: pos?.lng,
+                lastSeenAt: p.lastSeenAt)
+        }
+        // Prefer our own fix, then the hub's echo of it, then the one-shot
+        // fix taken at load. Any of them is close enough to measure a few
+        // hundred metres of forest from.
+        let origin: (lat: Double, lng: Double)? =
+            lastFix.map { ($0.lat, $0.lng) }
+            ?? myId.flatMap { store.positions[$0] }.map { ($0.lat, $0.lng) }
+            ?? initialUserCenter.map { ($0.latitude, $0.longitude) }
+
+        return WatchSnapshot(
+            slug: store.slug,
+            title: store.title,
+            isRecording: recorder.isRecording,
+            isSharing: location.isWatching,
+            isConnected: store.connectionState == .connected,
+            myLat: origin?.lat,
+            myLng: origin?.lng,
+            people: people)
+    }
+
     // MARK: - Loading + joining + hub
 
     private func load() async {
@@ -587,6 +649,7 @@ struct SearchView: View {
     }
 
     private func handleFix(_ fix: GeoFix) {
+        lastFix = fix
         // Client-side 1/s throttle on top of the server's 700ms rate limit.
         let now = Date()
         if now.timeIntervalSince(lastSentAt) < Self.minSendInterval { return }
@@ -673,32 +736,7 @@ struct SearchView: View {
     }
 }
 
-// MARK: - Color helper
-
-extension Color {
-    /// Parses "#rrggbb" or "#rrggbbaa". Falls back to gray on bad input.
-    init(hex: String) {
-        var s = hex
-        if s.hasPrefix("#") { s.removeFirst() }
-        guard s.count == 6 || s.count == 8,
-              let value = UInt64(s, radix: 16) else {
-            self = .gray; return
-        }
-        let r, g, b, a: Double
-        if s.count == 6 {
-            r = Double((value >> 16) & 0xFF) / 255
-            g = Double((value >> 8)  & 0xFF) / 255
-            b = Double( value        & 0xFF) / 255
-            a = 1
-        } else {
-            r = Double((value >> 24) & 0xFF) / 255
-            g = Double((value >> 16) & 0xFF) / 255
-            b = Double((value >> 8)  & 0xFF) / 255
-            a = Double( value        & 0xFF) / 255
-        }
-        self = Color(.sRGB, red: r, green: g, blue: b, opacity: a)
-    }
-}
+// `Color(hex:)` lives in Shared/ColorHex.swift — the watch app needs it too.
 
 #Preview {
     NavigationStack {
