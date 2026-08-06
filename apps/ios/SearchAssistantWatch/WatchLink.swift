@@ -68,6 +68,13 @@ extension WatchLink: WCSessionDelegate {
         Task { @MainActor in self.apply(applicationContext) }
     }
 
+    /// The live path. Same payload as the application context — the phone
+    /// picks whichever transport can actually deliver right now, so both
+    /// land here and the watch doesn't care which one it was.
+    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        Task { @MainActor in self.apply(message) }
+    }
+
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         let reachable = session.isReachable
         Task { @MainActor in self.isReachable = reachable }

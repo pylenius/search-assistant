@@ -48,6 +48,11 @@ struct SearchView: View {
     /// positions arrive.
     @State private var focusedParticipantId: UUID?
 
+    /// Identifies this view to `WatchBridge`, so a departing SearchView
+    /// can't tear down an arriving one's handler. Stable for the view's
+    /// lifetime because it's @State.
+    @State private var watchOwner = UUID()
+
     /// Our own most recent fix. The hub echo can't be relied on for this —
     /// it only arrives while sharing is on — and the watch needs an origin
     /// to measure distances from.
@@ -68,7 +73,7 @@ struct SearchView: View {
             .sheet(isPresented: $manageSheetShown) { manageSheet }
             .sheet(isPresented: $participantsSheetShown) { participantsSheet }
             .onAppear {
-                WatchBridge.shared.onCommand = { command in
+                WatchBridge.shared.takeOver(owner: watchOwner) { command in
                     // Same functions the on-screen chips call, so the watch
                     // can't drift into a second code path.
                     switch command {
@@ -91,8 +96,7 @@ struct SearchView: View {
                 if recorder.isRecording { Task { await recorder.stop() } }
                 location.stop()
                 Task { await hub?.disconnect() }
-                WatchBridge.shared.onCommand = nil
-                WatchBridge.shared.clear()
+                WatchBridge.shared.resign(owner: watchOwner)
             }
             .onChange(of: store.endedRemotely) { ended in
                 if ended { loadError = "The owner ended this search." }

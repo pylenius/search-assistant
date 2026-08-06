@@ -16,12 +16,34 @@ import WatchConnectivity
 ///
 /// A singleton because `WCSession.default` is one per process and its
 /// delegate can only be set once.
+@MainActor
 final class WatchBridge: NSObject {
     static let shared = WatchBridge()
 
-    /// Set by `SearchView` while it's on screen; cleared when it leaves.
-    /// Invoked on the main actor.
-    var onCommand: ((WatchCommand) -> Void)?
+    /// Set by `SearchView` while it's on screen. Invoked on the main actor.
+    private var onCommand: ((WatchCommand) -> Void)?
+
+    /// Which `SearchView` currently owns the bridge.
+    ///
+    /// Opening a link for another search replaces the top of the navigation
+    /// stack, and SwiftUI can run the incoming view's `onAppear` before the
+    /// outgoing view's `onDisappear`. Without an owner check the departing
+    /// view would then tear down the arriving view's handler and blank its
+    /// snapshot — the watch would go dead a beat after switching searches.
+    private var owner: UUID?
+
+    func takeOver(owner: UUID, onCommand: @escaping (WatchCommand) -> Void) {
+        self.owner = owner
+        self.onCommand = onCommand
+    }
+
+    /// No-op if another view has already taken over.
+    func resign(owner: UUID) {
+        guard self.owner == owner else { return }
+        self.owner = nil
+        self.onCommand = nil
+        clear()
+    }
 
     /// Last payload actually sent, used to skip no-op updates — `publish`
     /// runs on a timer and most ticks change nothing.
@@ -43,13 +65,40 @@ final class WatchBridge: NSObject {
 
     func publish(_ snapshot: WatchSnapshot) {
         guard let session, session.activationState == .activated else { return }
+        // Nothing on the other end. Without this the calls below fail every
+        // tick with WCErrorCodeWatchAppNotInstalled and fill the log.
+        guard session.isWatchAppInstalled else { return }
         guard snapshot != lastSent else { return }
         guard let data = try? encoder.encode(snapshot) else { return }
-        // Throws only if the session isn't activated or the payload isn't
-        // property-list-safe; `data` always is, and activation is checked
-        // above, so there's nothing actionable to do with the error.
-        try? session.updateApplicationContext([WatchMessage.snapshotKey: data])
-        lastSent = snapshot
+
+        // `lastSent` is only ever recorded against a delivery that actually
+        // succeeded. Recording it optimistically is a trap: the dedupe above
+        // would then suppress every retry of that same state, so a single
+        // failed send — the watch app not installed yet, the watch out of
+        // range — leaves the watch permanently stale on whatever it last
+        // managed to receive, until the snapshot happens to change again.
+        if session.isReachable {
+            // Live path: sendMessage is the transport built for frequent
+            // updates, and it's what keeps the numbers moving while someone
+            // is actually looking at the watch.
+            session.sendMessage(
+                [WatchMessage.snapshotKey: data],
+                replyHandler: nil,
+                errorHandler: { [weak self] _ in
+                    Task { @MainActor in self?.lastSent = nil }
+                })
+            lastSent = snapshot
+            return
+        }
+
+        // Watch asleep or out of range: application context is the only
+        // thing that survives that, being latest-wins and queued.
+        do {
+            try session.updateApplicationContext([WatchMessage.snapshotKey: data])
+            lastSent = snapshot
+        } catch {
+            lastSent = nil
+        }
     }
 
     /// Tells the watch no search is open, so it drops back to its idle
@@ -60,22 +109,36 @@ final class WatchBridge: NSObject {
 }
 
 extension WatchBridge: WCSessionDelegate {
-    func session(_ session: WCSession,
-                 activationDidCompleteWith activationState: WCSessionActivationState,
-                 error: Error?) {}
+    nonisolated func session(_ session: WCSession,
+                             activationDidCompleteWith activationState: WCSessionActivationState,
+                             error: Error?) {
+        // The watch may have been paired or the app installed since the last
+        // publish, both of which change whether a send can succeed at all.
+        Task { @MainActor in self.lastSent = nil }
+    }
 
-    func sessionDidBecomeInactive(_ session: WCSession) {}
+    nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
 
     /// Required on iOS: fires when the user switches to a different watch,
     /// and the session has to be re-activated to talk to the new one.
-    func sessionDidDeactivate(_ session: WCSession) {
+    nonisolated func sessionDidDeactivate(_ session: WCSession) {
         // The old session is done; re-activating binds to the new watch.
         // Anything we'd cached about the previous one is now wrong.
-        lastSent = nil
+        Task { @MainActor in self.lastSent = nil }
         session.activate()
     }
 
-    func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+    /// Reachability returning is the moment a previously-failed send can
+    /// succeed, so drop the dedupe and let the next tick resend.
+    nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
+        Task { @MainActor in self.lastSent = nil }
+    }
+
+    nonisolated func sessionWatchStateDidChange(_ session: WCSession) {
+        Task { @MainActor in self.lastSent = nil }
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         guard let raw = message[WatchMessage.commandKey] as? String,
               let command = WatchCommand(rawValue: raw) else { return }
         Task { @MainActor in
