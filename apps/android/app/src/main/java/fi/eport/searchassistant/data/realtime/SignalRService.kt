@@ -79,6 +79,10 @@ class SignalRService {
             _events.tryEmit(HubEvent.ParticipantLeft(UUID.fromString(id)))
         }, String::class.java)
 
+        conn.on("ParticipantRemoved", { id: String ->
+            _events.tryEmit(HubEvent.ParticipantRemoved(UUID.fromString(id)))
+        }, String::class.java)
+
         conn.on("PositionUpdated", { u: HubPositionUpdate ->
             _events.tryEmit(HubEvent.PositionUpdated(u.toDomain()))
         }, HubPositionUpdate::class.java)
@@ -101,6 +105,10 @@ class SignalRService {
 
         conn.on("PathFinalized", { id: String ->
             _events.tryEmit(HubEvent.PathFinalized(UUID.fromString(id)))
+        }, String::class.java)
+
+        conn.on("PathRemoved", { id: String ->
+            _events.tryEmit(HubEvent.PathRemoved(UUID.fromString(id)))
         }, String::class.java)
 
         conn.on("SearchUpdated", { u: HubSearchUpdated ->

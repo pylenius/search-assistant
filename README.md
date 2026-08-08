@@ -43,7 +43,14 @@ geocaching — where everyone just needs to see who has covered which ground.
   client and ~700ms server-side).
 - **Walked paths.** Recording a path stores your track as a LineString,
   simplified server-side with Douglas–Peucker, so the group can see the
-  ground already covered. Exportable as GPX from the share sheet.
+  ground already covered. Exportable as GPX from the share sheet. Trails are
+  drawn in their owner's colour, and each person's trail can be hidden from
+  the participants list when the map gets busy — a local view setting only,
+  never shared, and it never hides anyone's marker.
+- **Owner can remove a participant.** From the manage page: their trails, the
+  areas they drew, and their live position are deleted for everyone, and their
+  device loses access immediately. For a mis-join or a duplicate, not a
+  moderation tool.
 - **Two tokens, no user table.** A *session token* identifies a participant
   (drawing areas, recording paths, sending positions); an *owner token*,
   returned when the search is created, unlocks the manage page. Both live in

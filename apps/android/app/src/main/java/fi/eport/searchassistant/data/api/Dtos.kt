@@ -220,3 +220,9 @@ data class UpdateSearchResponse(
 
 @Serializable
 data class ClearPathsResponse(val cleared: Int)
+
+@Serializable
+data class RemoveParticipantResponse(
+    val removedPaths: Int,
+    val removedAreas: Int,
+)

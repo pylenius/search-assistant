@@ -153,3 +153,8 @@ struct UpdateSearchResponse: Codable {
 struct ClearPathsResponse: Codable {
     var cleared: Int
 }
+
+struct RemoveParticipantResponse: Codable {
+    var removedPaths: Int
+    var removedAreas: Int
+}

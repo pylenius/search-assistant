@@ -8,6 +8,9 @@ struct ManageView: View {
     let ownerToken: String
     var initialTitle: String
     var initialExpiresAt: Date?
+    /// Live list from the store, so a removal disappears from this sheet as
+    /// soon as the hub echoes it back — no local copy to keep in step.
+    var participants: [ParticipantDto] = []
     /// Called once the search has been deleted server-side. Parent
     /// pops back to landing.
     var onDeleted: () -> Void
@@ -21,6 +24,8 @@ struct ManageView: View {
     @State private var statusIsError: Bool = false
     @State private var confirmingClear: Bool = false
     @State private var confirmingDelete: Bool = false
+    @State private var pendingRemoval: ParticipantDto?
+    @State private var removingId: UUID?
 
     var body: some View {
         NavigationStack {
@@ -65,6 +70,35 @@ struct ManageView: View {
                     }
                 }
 
+                Section("Participants") {
+                    if participants.isEmpty {
+                        Text("Nobody has joined yet.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(participants) { p in
+                            HStack(spacing: 12) {
+                                Circle()
+                                    .fill(Color(hex: p.color))
+                                    .frame(width: 12, height: 12)
+                                Text(p.displayName)
+                                    .lineLimit(1)
+                                Spacer(minLength: 8)
+                                Button("Remove", role: .destructive) {
+                                    pendingRemoval = p
+                                }
+                                .buttonStyle(.borderless)
+                                .font(.footnote)
+                                .disabled(removingId != nil)
+                            }
+                        }
+                        Text("Removing someone deletes their trails and the areas they drew, "
+                             + "and ends their access.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("Danger zone") {
                     Button("Clear all recorded paths", role: .destructive) {
                         confirmingClear = true
@@ -92,6 +126,19 @@ struct ManageView: View {
                                 titleVisibility: .visible) {
                 Button("Delete search", role: .destructive) { Task { await deleteSearch() } }
                 Button("Cancel", role: .cancel) { }
+            }
+            .confirmationDialog(
+                pendingRemoval.map {
+                    "Remove \($0.displayName)? Their trails and areas are deleted for everyone, "
+                    + "and their device loses access."
+                } ?? "",
+                isPresented: Binding(get: { pendingRemoval != nil },
+                                     set: { if !$0 { pendingRemoval = nil } }),
+                titleVisibility: .visible) {
+                Button("Remove", role: .destructive) {
+                    if let p = pendingRemoval { Task { await remove(p) } }
+                }
+                Button("Cancel", role: .cancel) { pendingRemoval = nil }
             }
         }
         .onAppear {
@@ -144,6 +191,27 @@ struct ManageView: View {
         } catch let ApiError.status(code, _) {
             statusIsError = true
             status = "Clear failed (HTTP \(code))."
+        } catch {
+            statusIsError = true
+            status = error.localizedDescription
+        }
+    }
+
+    private func remove(_ p: ParticipantDto) async {
+        status = nil
+        pendingRemoval = nil
+        removingId = p.id
+        defer { removingId = nil }
+        do {
+            let resp = try await ApiClient.shared.removeParticipant(
+                slug: slug, participantId: p.id, ownerToken: ownerToken)
+            statusIsError = false
+            status = "Removed \(p.displayName) "
+                + "(\(resp.removedPaths) trail\(resp.removedPaths == 1 ? "" : "s"), "
+                + "\(resp.removedAreas) area\(resp.removedAreas == 1 ? "" : "s"))."
+        } catch let ApiError.status(code, _) {
+            statusIsError = true
+            status = "Remove failed (HTTP \(code))."
         } catch {
             statusIsError = true
             status = error.localizedDescription

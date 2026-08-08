@@ -20,9 +20,17 @@ data class SearchState(
     val areas: Map<UUID, AreaDto> = emptyMap(),
     val paths: Map<UUID, PathDto> = emptyMap(),
     val positions: Map<UUID, PositionUpdateDto> = emptyMap(),
+    /// Participants whose trails are hidden on this device. Not persisted and
+    /// not shared — it declutters the map for whoever is looking at it.
+    /// Markers are never hidden: where someone is still matters when where
+    /// they've been is in the way.
+    val hiddenTrails: Set<UUID> = emptySet(),
     val me: Me? = null,
     val connectionState: ConnectionState = ConnectionState.Idle,
     val endedRemotely: Boolean = false,
+    /// The owner removed *us*. Separate from [endedRemotely]: the search
+    /// carries on for everyone else, we just aren't in it any more.
+    val removedRemotely: Boolean = false,
 )
 
 data class Me(

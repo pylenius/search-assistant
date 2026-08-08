@@ -110,6 +110,14 @@ struct ApiClient {
         try await request(.delete, "/api/searches/\(slug)/paths", ownerToken: ownerToken)
     }
 
+    func removeParticipant(slug: String,
+                           participantId: UUID,
+                           ownerToken: String) async throws -> RemoveParticipantResponse {
+        try await request(.delete,
+                          "/api/searches/\(slug)/participants/\(participantId.uuidString)",
+                          ownerToken: ownerToken)
+    }
+
     // MARK: - Plumbing
 
     private enum HTTPMethod: String { case get = "GET", post = "POST", patch = "PATCH", delete = "DELETE" }

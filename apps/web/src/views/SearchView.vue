@@ -71,6 +71,23 @@ function attachHubHandlers() {
   return {
     onParticipantJoined: store.upsertParticipant,
     onParticipantLeft: (_id: string) => { /* keep in list for v1 */ },
+    onParticipantRemoved: (id: string) => {
+      if (id === store.me?.id) {
+        // Our session token has just been deleted server-side, so the
+        // connection is dead and rejoining under the old token can't work.
+        // Drop it rather than leave the browser retrying with a token the
+        // server will never accept again.
+        clearSessionToken(props.slug)
+        recording.value = false
+        recordingPathId.value = null
+        if (flushTimer) { clearInterval(flushTimer); flushTimer = null }
+        geo.stop()
+        hub.disconnect().catch(() => {})
+        loadError.value = 'The owner removed you from this search.'
+        return
+      }
+      store.removeParticipant(id)
+    },
     onPositionUpdated: store.applyPosition,
     onAreaAdded: store.addArea,
     onAreaRemoved: store.removeArea,
@@ -80,6 +97,7 @@ function attachHubHandlers() {
       const p = store.paths.get(id)
       if (p) store.upsertPath({ ...p, endedAt: new Date().toISOString() })
     },
+    onPathRemoved: store.removePath,
     onSearchUpdated: store.applySearchUpdated,
     onSearchEnded: (_slug: string) => {
       loadError.value = 'The owner ended this search.'

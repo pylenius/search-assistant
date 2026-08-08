@@ -86,4 +86,11 @@ interface ApiService {
         @Path("slug") slug: String,
         @Header("X-Owner-Token") ownerToken: String,
     ): ClearPathsResponse
+
+    @DELETE("api/searches/{slug}/participants/{participantId}")
+    suspend fun removeParticipant(
+        @Path("slug") slug: String,
+        @Path("participantId") participantId: String,
+        @Header("X-Owner-Token") ownerToken: String,
+    ): RemoveParticipantResponse
 }

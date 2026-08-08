@@ -300,6 +300,37 @@ These are the ones that have actually bitten this codebase. Detailed notes in
    background, which drags in HealthKit permission and its review — don't,
    unless leaving the phone behind becomes a real requirement.
 
+10. **"Gone" and "finished" are different hub events, and so are "left" and
+    "removed".** A client told `PathFinalized` keeps drawing the line — that
+    is what finalized means — so a deleted path needs `PathRemoved`, and
+    `ClearPaths` sending the wrong one left stale trails on every connected
+    screen until reload. Likewise `ParticipantLeft` (disconnected, keep them
+    in the list) is not `ParticipantRemoved` (erased, drop them and
+    everything they drew).
+
+    Removing a participant has two constraints worth knowing before touching
+    `ManageEndpoints.RemoveParticipant`:
+
+    - **Their areas must be deleted explicitly, before the participant.**
+      `SearchArea.CreatedByParticipantId` is `DeleteBehavior.Restrict`, so the
+      participant delete fails outright for anyone who drew one. Paths and
+      positions would cascade, but they're deleted explicitly too — the ids
+      have to be collected *before* the rows vanish, because clients need them
+      to drop the shapes.
+    - **The removed device's hub connection outlives its row.** `SendPosition`
+      checks the participant still exists before inserting a fresh position
+      and throws a plain `HubException` if not, rather than surfacing a
+      foreign-key error. The client's own `ParticipantRemoved` handler is what
+      actually tears things down: clear the session token, stop recording,
+      disconnect.
+
+11. **Per-participant trail visibility is client-only state.** `hiddenTrails`
+    lives in each client's own store (web `searchStore`, iOS `SearchStore`,
+    Android `SearchState`), is never persisted and never sent anywhere. It
+    filters *paths only* — hiding a person's marker would hide where someone
+    is during a search, which is exactly the information the app exists to
+    show. Keep it that way.
+
 ## Store submissions
 
 Listing copy, assets and per-store declarations live in

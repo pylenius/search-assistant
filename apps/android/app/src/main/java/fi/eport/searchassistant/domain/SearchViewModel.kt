@@ -428,12 +428,14 @@ class SearchViewModel(
         when (event) {
             is HubEvent.ParticipantJoined -> upsertParticipant(event.participant)
             is HubEvent.ParticipantLeft -> Unit  // keep in list for v1 (matches web)
+            is HubEvent.ParticipantRemoved -> removeParticipant(event.participantId)
             is HubEvent.PositionUpdated -> applyPosition(event.position)
             is HubEvent.AreaAdded -> upsertArea(event.area)
             is HubEvent.AreaRemoved -> removeArea(event.areaId)
             is HubEvent.PathStarted -> upsertPath(event.path)
             is HubEvent.PathUpdated -> upsertPath(event.path)
             is HubEvent.PathFinalized -> finalizePath(event.pathId)
+            is HubEvent.PathRemoved -> _state.update { it.copy(paths = it.paths - event.pathId) }
             is HubEvent.SearchUpdated -> _state.update {
                 it.copy(title = event.update.title, expiresAt = event.update.expiresAt)
             }
@@ -483,6 +485,50 @@ class SearchViewModel(
     private fun upsertPath(p: PathDto) {
         _state.update { it.copy(paths = it.paths + (p.id to p)) }
     }
+
+    /// Per-device map decluttering. Never leaves the phone.
+    fun toggleTrail(participantId: UUID) {
+        _state.update {
+            it.copy(
+                hiddenTrails = if (participantId in it.hiddenTrails) {
+                    it.hiddenTrails - participantId
+                } else {
+                    it.hiddenTrails + participantId
+                }
+            )
+        }
+    }
+
+    /// Owner removed someone. The server has already deleted their paths and
+    /// areas and announced each one, but sweep here too — a client that
+    /// reconnected mid-removal would otherwise keep drawing orphaned shapes.
+    private fun removeParticipant(id: UUID) {
+        if (_state.value.me?.id == id) {
+            // Our session token no longer exists server-side, so the socket
+            // is dead and reconnecting with it can never succeed. Stop
+            // recording, drop the token, and let the screen say why.
+            stopRecording()
+            sessionStore.clearSessionToken(slug)
+            viewModelScope.launch { signalR.disconnect() }
+            _state.update { it.copy(removedRemotely = true) }
+            _phase.value = LoadPhase.Failed("The owner removed you from this search.")
+            return
+        }
+        _state.update { current ->
+            current.copy(
+                participants = current.participants - id,
+                positions = current.positions - id,
+                paths = current.paths.filterValues { it.participantId != id },
+                areas = current.areas.filterValues { it.createdByParticipantId != id },
+                hiddenTrails = current.hiddenTrails - id,
+            )
+        }
+    }
+
+    /// Owner-only. The hub broadcast that follows is what actually updates
+    /// the map — including on this device, so there's nothing to apply here.
+    suspend fun removeParticipant(participantId: UUID, ownerToken: String) =
+        apiClient.service.removeParticipant(slug, participantId.toString(), ownerToken)
 
     private fun finalizePath(id: UUID) {
         _state.update { current ->

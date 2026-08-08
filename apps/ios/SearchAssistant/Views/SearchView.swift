@@ -101,6 +101,17 @@ struct SearchView: View {
             .onChange(of: store.endedRemotely) { ended in
                 if ended { loadError = "The owner ended this search." }
             }
+            .onChange(of: store.removedRemotely) { removed in
+                guard removed else { return }
+                // The session token was deleted server-side, so the hub
+                // connection is dead and reconnecting with it can never
+                // succeed. Drop it rather than let the app retry forever.
+                loadError = "The owner removed you from this search."
+                SessionStore.shared.clearSessionToken(for: slug)
+                if recorder.isRecording { Task { await recorder.stop() } }
+                location.stop()
+                Task { await hub?.disconnect() }
+            }
             .toolbar {
                 if didLoad && loadError == nil {
                     ToolbarItem(placement: .principal) {
@@ -156,6 +167,7 @@ struct SearchView: View {
                 participants: store.participants,
                 areas: store.areas,
                 paths: store.paths,
+                hiddenTrails: store.hiddenTrails,
                 drawing: drawing,
                 draftPoints: draftPoints,
                 onTapWhileDrawing: { coord in
@@ -342,6 +354,7 @@ struct SearchView: View {
                 focusedParticipantId = id
                 participantsSheetShown = false
             },
+            onToggleTrail: { store.toggleTrail($0) },
             onClose: { participantsSheetShown = false }
         )
         .presentationDetents([.medium, .large])
@@ -353,6 +366,7 @@ struct SearchView: View {
         let now = Date()
         let staleAfter: TimeInterval = 5 * 60
         let myId = store.me?.id
+        let withTrails = Set(store.paths.values.map(\.participantId))
 
         // me first, then most recently seen.
         return store.participants.values
@@ -369,7 +383,9 @@ struct SearchView: View {
                     lastSeenAt: p.lastSeenAt,
                     hasPosition: store.positions[p.id] != nil,
                     isMe: p.id == myId,
-                    isStale: now.timeIntervalSince(p.lastSeenAt) > staleAfter
+                    isStale: now.timeIntervalSince(p.lastSeenAt) > staleAfter,
+                    hasTrail: withTrails.contains(p.id),
+                    trailHidden: store.hiddenTrails.contains(p.id)
                 )
             }
     }
@@ -382,6 +398,7 @@ struct SearchView: View {
                 ownerToken: token,
                 initialTitle: store.title,
                 initialExpiresAt: store.expiresAt,
+                participants: store.participantList,
                 onDeleted: {
                     manageSheetShown = false
                     dismiss()

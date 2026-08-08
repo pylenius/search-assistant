@@ -55,6 +55,15 @@ public class SearchHub(AppDbContext db, PositionRateLimiter rateLimiter) : Hub<I
         var existing = await db.Positions.FirstOrDefaultAsync(p => p.ParticipantId == participantId);
         if (existing is null)
         {
+            // The connection outlives the row: an owner can remove a
+            // participant mid-session, which cascades their position away.
+            // Inserting again would fail the foreign key, so say plainly
+            // what happened instead of surfacing a database error.
+            if (!await db.Participants.AnyAsync(p => p.Id == participantId))
+            {
+                throw new HubException("You are no longer part of this search.");
+            }
+
             db.Positions.Add(new Domain.Entities.Position
             {
                 ParticipantId = participantId,

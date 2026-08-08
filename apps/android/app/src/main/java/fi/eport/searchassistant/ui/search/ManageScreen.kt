@@ -1,6 +1,8 @@
 package fi.eport.searchassistant.ui.search
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
@@ -8,17 +10,21 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import fi.eport.searchassistant.AppContainer
+import fi.eport.searchassistant.data.api.ParticipantDto
 import fi.eport.searchassistant.data.api.UpdateSearchRequest
 import fi.eport.searchassistant.data.api.httpStatus
+import fi.eport.searchassistant.util.toComposeColor
 import kotlinx.coroutines.launch
 import kotlinx.datetime.Instant
 import kotlinx.datetime.toJavaInstant
 import kotlinx.datetime.toKotlinInstant
 import java.text.DateFormat
 import java.util.Date
+import java.util.UUID
 
 /// Owner-only management screen. Guarded by the local owner token —
 /// MainActivity checks before navigating here.
@@ -68,6 +74,21 @@ fun ManageScreen(
     var showClearDialog by rememberSaveable { mutableStateOf(false) }
     var showDeleteDialog by rememberSaveable { mutableStateOf(false) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
+
+    // This screen is its own route with no SearchViewModel behind it, so the
+    // roster is fetched here. A failure is silent on purpose: the rest of the
+    // screen works fine without it, and the owner came here to edit a title
+    // at least as often as to remove someone.
+    var participants by remember { mutableStateOf<List<ParticipantDto>>(emptyList()) }
+    var pendingRemoval by remember { mutableStateOf<ParticipantDto?>(null) }
+    var removingId by remember { mutableStateOf<UUID?>(null) }
+    LaunchedEffect(slug) {
+        participants = try {
+            container.apiClient.service.getSearch(slug).participants
+        } catch (t: Throwable) {
+            emptyList()
+        }
+    }
 
     fun setStatus(message: String, isError: Boolean) {
         status = message; statusIsError = isError
@@ -173,6 +194,47 @@ fun ManageScreen(
 
             HorizontalDivider()
 
+            Text("Participants (${participants.size})",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold)
+
+            if (participants.isEmpty()) {
+                Text("Nobody has joined yet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                participants.forEach { p ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .clip(CircleShape)
+                                .background(p.color.toComposeColor()),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(p.displayName, maxLines = 1, modifier = Modifier.weight(1f))
+                        TextButton(
+                            onClick = { pendingRemoval = p },
+                            enabled = removingId == null,
+                        ) {
+                            Text(
+                                if (removingId == p.id) "Removing…" else "Remove",
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                }
+                Text("Removing someone deletes their trails and the areas they drew, "
+                    + "and ends their access.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            HorizontalDivider()
+
             Text("Danger zone",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
@@ -242,6 +304,47 @@ fun ManageScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showClearDialog = false }) { Text("Cancel") }
+            },
+        )
+    }
+
+    pendingRemoval?.let { target ->
+        AlertDialog(
+            onDismissRequest = { pendingRemoval = null },
+            title = { Text("Remove ${target.displayName}?") },
+            text = {
+                Text("Their recorded trails and the areas they drew are deleted for "
+                    + "everyone, and their device loses access. This cannot be undone.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingRemoval = null
+                    removingId = target.id
+                    scope.launch {
+                        try {
+                            val res = container.apiClient.service.removeParticipant(
+                                slug, target.id.toString(), ownerToken)
+                            participants = participants.filterNot { it.id == target.id }
+                            setStatus(
+                                "Removed ${target.displayName} " +
+                                    "(${res.removedPaths} trail${if (res.removedPaths == 1) "" else "s"}, " +
+                                    "${res.removedAreas} area${if (res.removedAreas == 1) "" else "s"}).",
+                                isError = false,
+                            )
+                        } catch (t: Throwable) {
+                            setStatus(
+                                t.httpStatus?.let { "Remove failed (HTTP $it)." }
+                                    ?: "Network error.",
+                                isError = true,
+                            )
+                        } finally {
+                            removingId = null
+                        }
+                    }
+                }) { Text("Remove", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRemoval = null }) { Text("Cancel") }
             },
         )
     }

@@ -121,16 +121,21 @@ function syncAreaLayer() {
 function buildPathFeatureCollection() {
   return {
     type: 'FeatureCollection' as const,
-    features: [...store.paths.values()].map((p) => ({
-      type: 'Feature' as const,
-      id: p.id,
-      geometry: p.geometry,
-      properties: {
+    features: [...store.paths.values()]
+      // Hidden trails are dropped from the source rather than filtered in the
+      // layer: the collection is rebuilt on every change anyway, so this keeps
+      // the toggle in one place instead of splitting it across a paint rule.
+      .filter((p) => !store.hiddenTrails.has(p.participantId))
+      .map((p) => ({
+        type: 'Feature' as const,
         id: p.id,
-        color: store.participants.get(p.participantId)?.color ?? '#888',
-        finalized: p.endedAt !== null,
-      },
-    })),
+        geometry: p.geometry,
+        properties: {
+          id: p.id,
+          color: store.participants.get(p.participantId)?.color ?? '#888',
+          finalized: p.endedAt !== null,
+        },
+      })),
   }
 }
 
@@ -237,6 +242,7 @@ watch(() => store.positions, syncMarkers, { deep: true })
 watch(() => store.participants, () => { syncMarkers(); syncAreaLayer(); syncPathLayer() }, { deep: true })
 watch(() => store.areas, syncAreaLayer, { deep: true })
 watch(() => store.paths, syncPathLayer, { deep: true })
+watch(() => store.hiddenTrails, syncPathLayer)
 watch(() => props.drawing, (v) => applyDrawingMode(!!v))
 
 onBeforeUnmount(() => {

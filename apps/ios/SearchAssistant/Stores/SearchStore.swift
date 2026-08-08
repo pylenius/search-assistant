@@ -23,10 +23,19 @@ final class SearchStore: ObservableObject {
     @Published var paths: [UUID: PathDto] = [:]
     @Published var positions: [UUID: PositionUpdateDto] = [:]
 
+    /// Participants whose trails are hidden from the map. Per-device, not
+    /// persisted and not shared: it declutters this screen and nothing more.
+    /// Markers are deliberately never hidden — where someone is matters even
+    /// when where they've been is in the way.
+    @Published var hiddenTrails: Set<UUID> = []
+
     @Published var me: Me?
     @Published var connectionState: ConnectionState = .idle
     /// Set when the search is deleted by its owner (SearchEnded broadcast).
     @Published var endedRemotely: Bool = false
+    /// Set when the owner removed *us* specifically. Distinct from
+    /// `endedRemotely` because the search is still running for everyone else.
+    @Published var removedRemotely: Bool = false
 
     // MARK: - Derived
 
@@ -74,6 +83,29 @@ final class SearchStore: ObservableObject {
     func upsertPath(_ p: PathDto) { paths[p.id] = p }
     func removePath(_ id: UUID) { paths.removeValue(forKey: id) }
 
+    func toggleTrail(_ participantId: UUID) {
+        if hiddenTrails.contains(participantId) {
+            hiddenTrails.remove(participantId)
+        } else {
+            hiddenTrails.insert(participantId)
+        }
+    }
+
+    /// Owner removed someone. The server deletes their paths and areas and
+    /// announces each one, but sweep up here too: a client that reconnected
+    /// mid-removal would otherwise keep drawing shapes owned by nobody.
+    func removeParticipant(_ id: UUID) {
+        if me?.id == id {
+            removedRemotely = true
+            return
+        }
+        participants.removeValue(forKey: id)
+        positions.removeValue(forKey: id)
+        paths = paths.filter { $0.value.participantId != id }
+        areas = areas.filter { $0.value.createdByParticipantId != id }
+        hiddenTrails.remove(id)
+    }
+
     func finalizePath(_ id: UUID) {
         guard var p = paths[id] else { return }
         if p.endedAt == nil { p.endedAt = Date() }
@@ -99,8 +131,10 @@ final class SearchStore: ObservableObject {
         areas = [:]
         paths = [:]
         positions = [:]
+        hiddenTrails = []
         me = nil
         connectionState = .idle
         endedRemotely = false
+        removedRemotely = false
     }
 }

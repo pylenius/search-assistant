@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, ApiError } from '../lib/apiClient'
 import { getOwnerToken } from '../lib/sessionStore'
+import type { ParticipantDto } from '../types/api'
 
 const props = defineProps<{ slug: string }>()
 const router = useRouter()
@@ -15,6 +16,9 @@ const message = ref<string | null>(null)
 const title = ref('')
 const expiresLocal = ref('')  // <input type="datetime-local"> binds as a local string
 
+const participants = ref<ParticipantDto[]>([])
+const removingId = ref<string | null>(null)
+
 onMounted(async () => {
   token.value = getOwnerToken(props.slug)
   if (!token.value) {
@@ -25,6 +29,7 @@ onMounted(async () => {
     const snap = await api.getSearch(props.slug)
     title.value = snap.title
     expiresLocal.value = snap.expiresAt ? toLocalInput(snap.expiresAt) : ''
+    participants.value = snap.participants
   } catch (e) {
     loadError.value = e instanceof ApiError && e.status === 404
       ? 'This search no longer exists.'
@@ -80,6 +85,28 @@ async function clearPathsAction() {
   }
 }
 
+async function removeParticipantAction(p: ParticipantDto) {
+  if (!token.value || removingId.value) return
+  if (!confirm(
+    `Remove ${p.displayName} from this search?\n\n`
+    + 'Their recorded trails and the areas they drew are deleted for everyone, '
+    + 'and their device loses access. This cannot be undone.',
+  )) return
+
+  removingId.value = p.id
+  try {
+    const res = await api.removeParticipant(props.slug, p.id, token.value)
+    participants.value = participants.value.filter((x) => x.id !== p.id)
+    message.value = `Removed ${p.displayName}`
+      + ` (${res.removedPaths} trail${res.removedPaths === 1 ? '' : 's'},`
+      + ` ${res.removedAreas} area${res.removedAreas === 1 ? '' : 's'}).`
+  } catch (e) {
+    message.value = e instanceof ApiError ? `Remove failed (${e.status}).` : 'Network error.'
+  } finally {
+    removingId.value = null
+  }
+}
+
 async function deleteSearchAction() {
   if (!token.value) return
   if (!confirm('Delete this entire search? All participants, areas, and paths are removed for everyone.')) return
@@ -130,6 +157,32 @@ async function deleteSearchAction() {
             :disabled="saving || title.trim().length === 0"
             @click="save"
           >{{ saving ? 'Saving…' : 'Save changes' }}</button>
+        </div>
+
+        <hr class="border-slate-200" />
+
+        <div class="space-y-2">
+          <h2 class="text-sm font-semibold text-slate-700">
+            Participants <span class="font-normal text-slate-500">({{ participants.length }})</span>
+          </h2>
+          <p v-if="participants.length === 0" class="text-sm text-slate-500">Nobody has joined yet.</p>
+          <ul v-else class="divide-y divide-slate-100 rounded-md border border-slate-200">
+            <li v-for="p in participants" :key="p.id" class="flex items-center gap-3 px-3 py-2">
+              <span
+                class="w-3 h-3 rounded-full shrink-0 ring-2 ring-white shadow"
+                :style="{ backgroundColor: p.color }"
+              ></span>
+              <span class="min-w-0 flex-1 truncate text-sm text-slate-900">{{ p.displayName }}</span>
+              <button
+                class="shrink-0 rounded-md border border-rose-200 px-2.5 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                :disabled="removingId !== null"
+                @click="removeParticipantAction(p)"
+              >{{ removingId === p.id ? 'Removing…' : 'Remove' }}</button>
+            </li>
+          </ul>
+          <p class="text-xs text-slate-500">
+            Removing someone deletes their trails and the areas they drew, and ends their access.
+          </p>
         </div>
 
         <hr class="border-slate-200" />

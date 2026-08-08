@@ -10,6 +10,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.LocationDisabled
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,6 +35,8 @@ data class ParticipantRow(
     val hasPosition: Boolean,
     val isMe: Boolean,
     val isStale: Boolean,
+    val hasTrail: Boolean,
+    val trailHidden: Boolean,
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,6 +44,7 @@ data class ParticipantRow(
 fun ParticipantsSheet(
     rows: List<ParticipantRow>,
     onFocus: (UUID) -> Unit,
+    onToggleTrail: (UUID) -> Unit,
     onClose: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -123,6 +128,24 @@ fun ParticipantsSheet(
                                 Icons.Filled.LocationDisabled,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.outline,
+                            )
+                        }
+                        // Its own click target inside the row: the row
+                        // recenters the map, this only touches the trail.
+                        // Disabled for people who haven't recorded one, so an
+                        // inert toggle can't read as a broken one.
+                        IconButton(
+                            onClick = { onToggleTrail(row.id) },
+                            enabled = row.hasTrail,
+                        ) {
+                            Icon(
+                                if (row.trailHidden) Icons.Filled.VisibilityOff
+                                else Icons.Filled.Visibility,
+                                contentDescription =
+                                    if (row.trailHidden) "Show ${row.displayName}'s trail"
+                                    else "Hide ${row.displayName}'s trail",
+                                tint = if (row.trailHidden) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }

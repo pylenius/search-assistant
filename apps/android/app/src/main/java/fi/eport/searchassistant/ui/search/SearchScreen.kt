@@ -225,6 +225,7 @@ fun SearchScreen(
                 participants = state.participants,
                 areas = state.areas,
                 paths = state.paths,
+                hiddenTrails = state.hiddenTrails,
                 drawing = drawing,
                 draftPoints = draftPoints,
                 onTapWhileDrawing = { viewModel.appendDraftPoint(it) },
@@ -419,6 +420,7 @@ fun SearchScreen(
             val now = remember { kotlinx.datetime.Clock.System.now() }
             val staleAfter = 5L * 60  // seconds
             val myId = state.me?.id
+            val withTrails = state.paths.values.map { it.participantId }.toSet()
             val rows = state.participants.values
                 .sortedWith(compareByDescending<fi.eport.searchassistant.data.api.ParticipantDto> {
                     it.id == myId  // me first
@@ -433,6 +435,8 @@ fun SearchScreen(
                         isMe = p.id == myId,
                         isStale = (now.toEpochMilliseconds() - p.lastSeenAt
                             .toEpochMilliseconds()) / 1000 > staleAfter,
+                        hasTrail = p.id in withTrails,
+                        trailHidden = p.id in state.hiddenTrails,
                     )
                 }
             ParticipantsSheet(
@@ -441,6 +445,7 @@ fun SearchScreen(
                     viewModel.focusOnParticipant(id)
                     participantsSheetShown = false
                 },
+                onToggleTrail = { viewModel.toggleTrail(it) },
                 onClose = { participantsSheetShown = false },
             )
         }

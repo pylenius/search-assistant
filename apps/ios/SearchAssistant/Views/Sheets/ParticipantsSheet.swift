@@ -9,6 +9,7 @@ struct ParticipantsSheet: View {
     /// per render so we can drive `id:` on the ForEach.
     let rows: [Row]
     var onFocus: (UUID) -> Void
+    var onToggleTrail: (UUID) -> Void
     var onClose: () -> Void
 
     /// Updates every 15s so the relative-age strings stay fresh while
@@ -20,13 +21,20 @@ struct ParticipantsSheet: View {
         NavigationStack {
             List {
                 ForEach(rows) { row in
-                    Button {
-                        onFocus(row.id)
-                    } label: {
-                        rowView(row)
+                    // Two buttons in one row, both `.borderless`: the default
+                    // style in a List makes the whole row a single tap target,
+                    // so the eye would fire the recenter as well.
+                    HStack(spacing: 8) {
+                        Button {
+                            onFocus(row.id)
+                        } label: {
+                            rowView(row)
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(!row.hasPosition)
+
+                        trailToggle(row)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!row.hasPosition)
                     .opacity(row.isStale && !row.isMe ? 0.55 : 1)
                 }
             }
@@ -79,6 +87,27 @@ struct ParticipantsSheet: View {
         .padding(.vertical, 4)
     }
 
+    /// Hides just this person's recorded trail. Disabled for anyone who
+    /// hasn't recorded one, so a toggle that could do nothing never looks
+    /// like a toggle that's broken.
+    private func trailToggle(_ row: Row) -> some View {
+        Button {
+            onToggleTrail(row.id)
+        } label: {
+            Image(systemName: row.trailHidden ? "eye.slash" : "eye")
+                .font(.callout)
+                .foregroundStyle(row.trailHidden ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                .frame(width: 32, height: 32)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .disabled(!row.hasTrail)
+        .opacity(row.hasTrail ? 1 : 0.25)
+        .accessibilityLabel(row.trailHidden
+                            ? "Show \(row.displayName)'s trail"
+                            : "Hide \(row.displayName)'s trail")
+    }
+
     private func rowSubtitle(_ row: Row) -> String {
         if !row.hasPosition { return "No location yet" }
         return relativeAge(from: row.lastSeenAt)
@@ -103,5 +132,7 @@ struct ParticipantsSheet: View {
         let hasPosition: Bool
         let isMe: Bool
         let isStale: Bool
+        let hasTrail: Bool
+        let trailHidden: Bool
     }
 }

@@ -107,6 +107,13 @@ export const api = {
       ownerToken,
     )
   },
+  removeParticipant(slug: string, participantId: string, ownerToken: string) {
+    return ownerRequest<{ removedPaths: number; removedAreas: number }>(
+      `/api/searches/${encodeURIComponent(slug)}/participants/${participantId}`,
+      { method: 'DELETE' },
+      ownerToken,
+    )
+  },
 }
 
 async function ownerRequest<T>(path: string, init: RequestInit, ownerToken: string): Promise<T> {

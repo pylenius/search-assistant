@@ -90,6 +90,9 @@ final class SignalRService: NSObject {
             // The stale-fade in the participants list uses lastSeenAt
             // for the visual cue.
         }
+        conn.on(method: "ParticipantRemoved") { (id: UUID) in
+            Task { @MainActor in weakStore()?.removeParticipant(id) }
+        }
         conn.on(method: "PositionUpdated") { (u: PositionUpdateDto) in
             Task { @MainActor in weakStore()?.applyPosition(u) }
         }
@@ -107,6 +110,9 @@ final class SignalRService: NSObject {
         }
         conn.on(method: "PathFinalized") { (id: UUID) in
             Task { @MainActor in weakStore()?.finalizePath(id) }
+        }
+        conn.on(method: "PathRemoved") { (id: UUID) in
+            Task { @MainActor in weakStore()?.removePath(id) }
         }
         conn.on(method: "SearchUpdated") { (u: SearchUpdatedDto) in
             Task { @MainActor in weakStore()?.searchUpdated(u) }

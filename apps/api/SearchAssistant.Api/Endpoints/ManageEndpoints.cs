@@ -15,6 +15,7 @@ public static class ManageEndpoints
         app.MapPatch("/api/searches/{slug}", UpdateSearch).RequireOwner();
         app.MapDelete("/api/searches/{slug}", DeleteSearch).RequireOwner();
         app.MapDelete("/api/searches/{slug}/paths", ClearPaths).RequireOwner();
+        app.MapDelete("/api/searches/{slug}/participants/{id:guid}", RemoveParticipant).RequireOwner();
         return app;
     }
 
@@ -95,9 +96,69 @@ public static class ManageEndpoints
         var group = SearchHub.GroupNameFor(search.Id);
         foreach (var id in pathIds)
         {
-            await hub.Clients.Group(group).PathFinalized(id);
+            await hub.Clients.Group(group).PathRemoved(id);
         }
 
         return Results.Ok(new { cleared = pathIds.Count });
+    }
+
+    /// Removes a person from the search along with everything they produced:
+    /// their trails, the areas they drew, their live position and its history.
+    ///
+    /// This is the owner's tool for a mis-join — someone who joined the wrong
+    /// search, or a duplicate from a phone that lost its session token — so it
+    /// erases rather than tombstones. Their session token stops resolving the
+    /// moment the row goes, which is what ejects their device.
+    private static async Task<IResult> RemoveParticipant(
+        string slug,
+        Guid id,
+        AppDbContext db,
+        IHubContext<SearchHub, ISearchClient> hub,
+        HttpContext http,
+        CancellationToken ct)
+    {
+        var search = http.GetSearch();
+
+        var participant = await db.Participants
+            .FirstOrDefaultAsync(p => p.Id == id && p.SearchId == search.Id, ct);
+        if (participant is null) return Results.NotFound();
+
+        var pathIds = await db.Paths
+            .Where(p => p.ParticipantId == id)
+            .Select(p => p.Id)
+            .ToListAsync(ct);
+        var areaIds = await db.Areas
+            .Where(a => a.CreatedByParticipantId == id)
+            .Select(a => a.Id)
+            .ToListAsync(ct);
+
+        // Areas must go first and explicitly: their creator FK is Restrict, so
+        // leaving them would fail the participant delete outright. Paths and
+        // positions would cascade, but they're deleted here too so the ids are
+        // known before the rows vanish — clients need them to drop the shapes.
+        if (areaIds.Count > 0)
+        {
+            await db.Areas.Where(a => a.CreatedByParticipantId == id).ExecuteDeleteAsync(ct);
+        }
+        if (pathIds.Count > 0)
+        {
+            await db.Paths.Where(p => p.ParticipantId == id).ExecuteDeleteAsync(ct);
+        }
+
+        db.Participants.Remove(participant);
+        await db.SaveChangesAsync(ct);
+
+        var group = SearchHub.GroupNameFor(search.Id);
+        foreach (var areaId in areaIds)
+        {
+            await hub.Clients.Group(group).AreaRemoved(areaId);
+        }
+        foreach (var pathId in pathIds)
+        {
+            await hub.Clients.Group(group).PathRemoved(pathId);
+        }
+        await hub.Clients.Group(group).ParticipantRemoved(id);
+
+        return Results.Ok(new { removedPaths = pathIds.Count, removedAreas = areaIds.Count });
     }
 }

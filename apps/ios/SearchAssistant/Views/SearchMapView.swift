@@ -13,6 +13,9 @@ struct SearchMapView: UIViewRepresentable {
     var participants: [UUID: ParticipantDto]
     var areas: [UUID: AreaDto]
     var paths: [UUID: PathDto]
+    /// Participants whose trails the viewer has switched off. Markers are
+    /// unaffected — only the recorded lines come off the map.
+    var hiddenTrails: Set<UUID> = []
     var drawing: Bool = false
     var draftPoints: [CLLocationCoordinate2D] = []
     var onTapWhileDrawing: ((CLLocationCoordinate2D) -> Void)? = nil
@@ -193,6 +196,11 @@ struct SearchMapView: UIViewRepresentable {
         var desiredIds: Set<UUID> = []
 
         for (pid, path) in paths {
+            // A hidden trail is simply not desired, so the sweep at the end
+            // removes it — no separate teardown, and unhiding rebuilds it
+            // through the same path as any other change.
+            if hiddenTrails.contains(path.participantId) { continue }
+
             desiredIds.insert(pid)
             let color = UIColor(hex: participants[path.participantId]?.color ?? "#888888")
             let newFp = OverlayShapes.pointsFingerprint(path.geometry.coordinates,

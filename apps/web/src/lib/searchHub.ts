@@ -14,12 +14,14 @@ export interface SearchUpdated { title: string; expiresAt: string | null }
 export interface SearchHubHandlers {
   onParticipantJoined: (p: ParticipantDto) => void
   onParticipantLeft: (participantId: string) => void
+  onParticipantRemoved: (participantId: string) => void
   onPositionUpdated: (u: PositionUpdateDto) => void
   onAreaAdded: (a: AreaDto) => void
   onAreaRemoved: (areaId: string) => void
   onPathStarted: (p: PathDto) => void
   onPathUpdated: (p: PathDto) => void
   onPathFinalized: (pathId: string) => void
+  onPathRemoved: (pathId: string) => void
   onSearchUpdated: (u: SearchUpdated) => void
   onSearchEnded: (slug: string) => void
 }
@@ -38,12 +40,14 @@ export class SearchHubClient {
 
     conn.on('ParticipantJoined', handlers.onParticipantJoined)
     conn.on('ParticipantLeft', handlers.onParticipantLeft)
+    conn.on('ParticipantRemoved', handlers.onParticipantRemoved)
     conn.on('PositionUpdated', handlers.onPositionUpdated)
     conn.on('AreaAdded', handlers.onAreaAdded)
     conn.on('AreaRemoved', handlers.onAreaRemoved)
     conn.on('PathStarted', handlers.onPathStarted)
     conn.on('PathUpdated', handlers.onPathUpdated)
     conn.on('PathFinalized', handlers.onPathFinalized)
+    conn.on('PathRemoved', handlers.onPathRemoved)
     conn.on('SearchUpdated', handlers.onSearchUpdated)
     conn.on('SearchEnded', handlers.onSearchEnded)
 

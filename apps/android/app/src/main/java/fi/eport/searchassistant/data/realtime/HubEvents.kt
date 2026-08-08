@@ -12,12 +12,20 @@ import java.util.UUID
 sealed interface HubEvent {
     data class ParticipantJoined(val participant: ParticipantDto) : HubEvent
     data class ParticipantLeft(val participantId: UUID) : HubEvent
+
+    /// Removed by the owner — gone along with everything they drew, as
+    /// opposed to [ParticipantLeft], who merely dropped off the network.
+    data class ParticipantRemoved(val participantId: UUID) : HubEvent
     data class PositionUpdated(val position: PositionUpdateDto) : HubEvent
     data class AreaAdded(val area: AreaDto) : HubEvent
     data class AreaRemoved(val areaId: UUID) : HubEvent
     data class PathStarted(val path: PathDto) : HubEvent
     data class PathUpdated(val path: PathDto) : HubEvent
     data class PathFinalized(val pathId: UUID) : HubEvent
+
+    /// Deleted server-side. A finalized path is still drawn, so this needs
+    /// to be its own event or the line outlives the data.
+    data class PathRemoved(val pathId: UUID) : HubEvent
     data class SearchUpdated(val update: SearchUpdatedDto) : HubEvent
     data class SearchEnded(val slug: String) : HubEvent
 

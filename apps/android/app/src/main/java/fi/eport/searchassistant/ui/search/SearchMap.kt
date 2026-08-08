@@ -55,6 +55,9 @@ fun SearchMap(
     participants: Map<UUID, ParticipantDto>,
     areas: Map<UUID, AreaDto>,
     paths: Map<UUID, PathDto>,
+    /// Participants whose trails the viewer switched off. Markers are
+    /// unaffected — only the recorded lines come off the map.
+    hiddenTrails: Set<UUID> = emptySet(),
     drawing: Boolean = false,
     draftPoints: List<LatLng> = emptyList(),
     onTapWhileDrawing: ((LatLng) -> Unit)? = null,
@@ -147,8 +150,10 @@ fun SearchMap(
             )
         }
 
-        // Paths.
+        // Paths. Hidden trails are skipped outright — the composable is
+        // rebuilt on every state change anyway, so there's nothing to undo.
         paths.values.forEach { path ->
+            if (path.participantId in hiddenTrails) return@forEach
             val coords = path.geometry.coordinates
             if (coords.size < 2) return@forEach
             val points = coords.map { LatLng(it[1], it[0]) }
